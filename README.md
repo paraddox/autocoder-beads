@@ -39,7 +39,7 @@ You need one of the following:
 
 ## Quick Start
 
-### Option 1: Web UI (Recommended)
+### Web UI
 
 **Windows:**
 ```cmd
@@ -55,81 +55,55 @@ This launches the React-based web UI at `http://localhost:5173` with:
 - Project selection and creation
 - Kanban board view of features
 - Real-time agent output streaming
-- Start/pause/stop controls
-
-### Option 2: CLI Mode
-
-**Windows:**
-```cmd
-start.bat
-```
-
-**macOS / Linux:**
-```bash
-./start.sh
-```
-
-The start script will:
-1. Check if Claude CLI is installed
-2. Check if you're authenticated (prompt to run `claude login` if not)
-3. Create a Python virtual environment
-4. Install dependencies
-5. Launch the main menu
+- Start/stop controls for per-project Docker containers
 
 ### Creating or Continuing a Project
 
-You'll see options to:
+In the web UI you can:
 - **Create new project** - Start a fresh project with AI-assisted spec generation
 - **Continue existing project** - Resume work on a previous project
 
-For new projects, you can use the built-in `/create-spec` command to interactively create your app specification with Claude's help.
+For new projects, use the built-in spec creation wizard to interactively create your app specification with Claude's help.
 
-**Interrupted Setup:** If you close the browser during project setup (before completing the spec), you can resume where you left off. Incomplete projects show a warning icon in the project selector, and clicking them offers options to resume or start fresh.
+**Interrupted Setup:** If you close the browser during project setup (before completing the spec), you can resume where you left off. Incomplete projects show a warning icon in the project selector.
 
-### Option 3: Docker
+### Docker (Per-Project Containers)
 
-Run AutoCoder in a container with all dependencies pre-installed.
+AutoCoder uses a per-project container architecture for isolated, sandboxed development:
 
-**Build the image:**
+- **Host runs:** FastAPI server + React UI (project management, progress monitoring)
+- **Each project gets:** Its own Docker container with Claude Code + beads CLI
+- **Benefits:** Multiple projects can run simultaneously, each fully isolated
+
+**Build the project container image:**
 ```bash
-docker build -t autocoder .
+docker build -f Dockerfile.project -t autocoder-project .
 ```
 
-**Run with API key:**
-```bash
-ANTHROPIC_API_KEY=sk-... ./docker-run-apikey.sh
-```
-
-**Run with Claude credentials:**
-```bash
-# Requires prior `claude login` on host
-./docker-run-creds.sh
-```
-
-**Using docker-compose:**
-```bash
-# Set API key in environment or .env file
-ANTHROPIC_API_KEY=sk-... docker compose up -d
-```
-
-**Test the build:**
+**Run the test suite:**
 ```bash
 ./docker-test.sh
 ```
 
-The UI will be available at `http://localhost:8888`.
+This builds the image, starts the server, creates test projects, spins up containers, and verifies everything works.
 
-#### Data Persistence
-
-All data is stored in a single `./data` directory:
-```
-./data/
-  autocoder/        # Project registry
-  claude/           # Claude credentials (if using docker-run-creds.sh)
-  projects/         # Your projects (create projects here to persist them)
+**Start the UI:**
+```bash
+./start_ui.sh   # macOS/Linux
+start_ui.bat    # Windows
 ```
 
-**Important:** When creating projects in the Docker UI, select `/data/projects/` as the parent directory to ensure your projects persist across container restarts.
+When you start an agent for a project via the UI, it automatically:
+1. Creates a container named `autocoder-{project-name}`
+2. Mounts the project directory at `/project`
+3. Mounts Claude credentials from `~/.claude`
+4. Runs Claude Code with beads-based feature tracking
+
+**Container lifecycle:**
+- `not_created` → `running` → `stopped` (15 min idle timeout)
+- Stopped containers persist and restart quickly
+- Progress is visible in all states (reads from `.beads/` on host)
+- Multiple containers can run simultaneously for different projects
 
 ---
 
@@ -137,19 +111,18 @@ All data is stored in a single `./data` directory:
 
 ### Two-Agent Pattern
 
-1. **Initializer Agent (First Session):** Reads your app specification, creates features in a SQLite database (`features.db`), sets up the project structure, and initializes git.
+1. **Initializer Agent (First Session):** Reads your app specification, creates features using beads issue tracking (`.beads/` directory), sets up the project structure, and initializes git.
 
-2. **Coding Agent (Subsequent Sessions):** Picks up where the previous session left off, implements features one by one, and marks them as passing in the database.
+2. **Coding Agent (Subsequent Sessions):** Picks up where the previous session left off, implements features one by one, and marks them as complete using beads.
 
 ### Feature Management
 
-Features are stored in SQLite via SQLAlchemy and managed through an MCP server that exposes tools to the agent:
-- `feature_get_stats` - Progress statistics
-- `feature_get_next` - Get highest-priority pending feature
-- `feature_get_for_regression` - Random passing features for regression testing
-- `feature_mark_passing` - Mark feature complete
-- `feature_skip` - Move feature to end of queue
-- `feature_create_bulk` - Initialize all features (used by initializer)
+Features are tracked using **beads** (git-backed issue tracking). Each project has its own `.beads/` directory. Claude Code uses the `bd` CLI directly via instructions in the project's `CLAUDE.md`:
+- `bd stats` - Progress statistics
+- `bd ready` - Get available features (no blockers)
+- `bd list --status=open` - List pending features
+- `bd close <id>` - Mark feature complete
+- `bd create` - Create new features
 
 ### Session Management
 
@@ -178,34 +151,23 @@ Features are stored in SQLite via SQLAlchemy and managed through an MCP server t
 
 ```
 autonomous-coding/
-├── start.bat                 # Windows CLI start script
-├── start.sh                  # macOS/Linux CLI start script
-├── start_ui.bat              # Windows Web UI start script
-├── start_ui.sh               # macOS/Linux Web UI start script
-├── Dockerfile                # Docker image build
-├── docker-compose.yml        # Docker Compose configuration
-├── docker-entrypoint.sh      # Container entrypoint script
-├── docker-run-apikey.sh      # Run with API key
-├── docker-run-creds.sh       # Run with Claude credentials
-├── docker-test.sh            # Build and test Docker image
-├── start.py                  # CLI menu and project management
+├── start_ui.bat              # Windows start script
+├── start_ui.sh               # macOS/Linux start script
+├── Dockerfile.project        # Per-project container image
+├── docker-test.sh            # Build and test Docker containers
 ├── start_ui.py               # Web UI backend (FastAPI server launcher)
-├── autonomous_agent_demo.py  # Agent entry point
-├── agent.py                  # Agent session logic
-├── client.py                 # Claude SDK client configuration
-├── security.py               # Bash command allowlist and validation
 ├── progress.py               # Progress tracking utilities
 ├── prompts.py                # Prompt loading utilities
+├── registry.py               # Project registry (SQLite-based)
 ├── api/
-│   └── database.py           # SQLAlchemy models (Feature table)
-├── mcp_server/
-│   └── feature_mcp.py        # MCP server for feature management tools
+│   └── beads_client.py       # Python wrapper for beads CLI
 ├── server/
 │   ├── main.py               # FastAPI REST API server
 │   ├── websocket.py          # WebSocket handler for real-time updates
 │   ├── schemas.py            # Pydantic schemas
 │   ├── routers/              # API route handlers
-│   └── services/             # Business logic services
+│   └── services/
+│       └── container_manager.py  # Per-project Docker container management
 ├── ui/                       # React frontend
 │   ├── src/
 │   │   ├── App.tsx           # Main app component
@@ -217,8 +179,7 @@ autonomous-coding/
 │   ├── commands/
 │   │   └── create-spec.md    # /create-spec slash command
 │   ├── skills/               # Claude Code skills
-│   └── templates/            # Prompt templates
-├── generations/              # Generated projects go here
+│   └── templates/            # Prompt templates (including project_claude.md)
 ├── requirements.txt          # Python dependencies
 └── .env                      # Optional configuration (N8N webhook)
 ```
@@ -230,14 +191,14 @@ autonomous-coding/
 After the agent runs, your project directory will contain:
 
 ```
-generations/my_project/
-├── features.db               # SQLite database (feature test cases)
+my_project/
+├── .beads/                   # Beads issue tracking (git-backed)
+├── CLAUDE.md                 # Instructions for Claude Code
 ├── prompts/
 │   ├── app_spec.txt          # Your app specification
 │   ├── initializer_prompt.md # First session prompt
 │   └── coding_prompt.md      # Continuation session prompt
 ├── init.sh                   # Environment setup script
-├── claude-progress.txt       # Session progress notes
 └── [application files]       # Generated application code
 ```
 

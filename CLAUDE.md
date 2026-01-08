@@ -11,15 +11,9 @@ This is an autonomous coding agent system with a React-based UI. It uses the Cla
 
 ## Commands
 
-### Quick Start (Recommended)
+### Quick Start
 
 ```bash
-# Windows - launches CLI menu
-start.bat
-
-# macOS/Linux
-./start.sh
-
 # Launch Web UI (serves pre-built React app)
 start_ui.bat      # Windows
 ./start_ui.sh     # macOS/Linux
@@ -36,40 +30,9 @@ source venv/bin/activate  # macOS/Linux
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the main CLI launcher
-python start.py
-
-# Run agent directly for a project (use absolute path or registered name)
-python autonomous_agent_demo.py --project-dir C:/Projects/my-app
-python autonomous_agent_demo.py --project-dir my-app  # if registered
-
-# YOLO mode: rapid prototyping without browser testing
-python autonomous_agent_demo.py --project-dir my-app --yolo
+# Run the FastAPI server
+uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
-
-### YOLO Mode (Rapid Prototyping)
-
-YOLO mode skips all testing for faster feature iteration:
-
-```bash
-# CLI
-python autonomous_agent_demo.py --project-dir my-app --yolo
-
-# UI: Toggle the lightning bolt button before starting the agent
-```
-
-**What's different in YOLO mode:**
-- No regression testing (skips `feature_get_for_regression`)
-- No Playwright MCP server (browser automation disabled)
-- Features marked passing after lint/type-check succeeds
-- Faster iteration for prototyping
-
-**What's the same:**
-- Lint and type-check still run to verify code compiles
-- Feature MCP server for tracking progress
-- All other development tools available
-
-**When to use:** Early prototyping when you want to quickly scaffold features without verification overhead. Switch back to standard mode for production-quality development.
 
 ### React UI (in ui/ directory)
 
@@ -83,48 +46,35 @@ npm run lint     # Run ESLint
 
 **Note:** The `start_ui.bat` script serves the pre-built UI from `ui/dist/`. After making UI changes, run `npm run build` in the `ui/` directory.
 
-### Docker
+### Docker (Per-Project Containers)
+
+The system uses per-project Docker containers for isolated development:
 
 ```bash
-# Build the image
-docker build -t autocoder .
+# Build the project container image
+docker build -f Dockerfile.project -t autocoder-project .
 
-# Run with API key
-ANTHROPIC_API_KEY=sk-... ./docker-run-apikey.sh
-
-# Run with Claude credentials (requires prior `claude login`)
-./docker-run-creds.sh
-
-# Using docker-compose
-ANTHROPIC_API_KEY=sk-... docker compose up -d
-
-# Test the build
+# Run the test suite (builds, tests containers, cleans up)
 ./docker-test.sh
-
-# Stop container
-docker stop autocoder && docker rm autocoder
 ```
 
-**Data persistence:** All data stored in `./data/` volume:
-- `data/autocoder/` - Project registry
-- `data/claude/` - Claude credentials
-- `data/projects/` - Projects (create here to persist)
+**Architecture:**
+- Host runs FastAPI server + React UI (project management, progress monitoring)
+- Each project gets its own Docker container with Claude Code + beads CLI
+- Multiple containers can run simultaneously for different projects
 
-**Environment variables:**
-- `ANTHROPIC_API_KEY` - API key authentication
-- `ALLOW_EXTERNAL_ACCESS` - Enable non-localhost access (default: true in container)
-- `CORS_ORIGINS` - Allowed CORS origins (default: * in container)
-- `AUTOCODER_DATA_DIR` - Data directory path (default: /data in container)
+**Container lifecycle:**
+- `not_created` → `running` → `stopped` (15 min idle timeout)
+- Stopped containers persist and restart quickly
+- Progress visible in all states (reads from `.beads/` on host)
+
+**Container naming:** `autocoder-{project-name}`
 
 ## Architecture
 
 ### Core Python Modules
 
-- `start.py` - CLI launcher with project creation/selection menu
-- `autonomous_agent_demo.py` - Entry point for running the agent
-- `agent.py` - Agent session loop using Claude Agent SDK
-- `client.py` - ClaudeSDKClient configuration with security hooks and MCP servers
-- `security.py` - Bash command allowlist validation (ALLOWED_COMMANDS whitelist)
+- `start_ui.py` - Web UI backend (FastAPI server launcher)
 - `prompts.py` - Prompt template loading with project-specific fallback
 - `progress.py` - Progress tracking using beads, webhook notifications
 - `registry.py` - Project registry for mapping names to paths (cross-platform)
@@ -145,36 +95,31 @@ The FastAPI server provides REST endpoints for the UI:
 
 - `server/routers/projects.py` - Project CRUD with registry integration
 - `server/routers/features.py` - Feature management via BeadsClient
-- `server/routers/agent.py` - Agent control (start/stop/pause/resume)
+- `server/routers/agent.py` - Container control (start/stop/remove)
 - `server/routers/filesystem.py` - Filesystem browser API with security controls
 - `server/routers/spec_creation.py` - WebSocket for interactive spec creation
+- `server/services/container_manager.py` - Per-project Docker container lifecycle
 
 ### Feature Management
 
-Features are tracked using **beads** (git-backed issue tracking). Each target project has its own `.beads/` directory initialized when the agent starts.
+Features are tracked using **beads** (git-backed issue tracking). Each project has its own `.beads/` directory. Claude Code uses the `bd` CLI directly via instructions in the project's `CLAUDE.md`:
 
-- `api/beads_client.py` - Python wrapper for the `bd` CLI
-- `mcp_server/feature_mcp.py` - MCP server exposing feature management tools
+- `api/beads_client.py` - Python wrapper for the `bd` CLI (used by server for progress display)
 
-**Feature data model:**
-- `id` - String ID (e.g., "feat-1", "feat-2")
-- `priority` - Numeric priority (stored as P0-P4 in beads + label)
-- `category` - Feature category (stored as label)
-- `name` - Feature name (beads issue title)
-- `description` - Detailed description
-- `steps` - Implementation steps (markdown checklist in description)
-- `passes` - Boolean (beads status: closed = passing)
-- `in_progress` - Boolean (beads status: in_progress)
+**Feature data model (beads issues):**
+- `id` - String ID (e.g., "beads-1", "beads-2")
+- `priority` - P0-P4 (0=critical, 4=backlog)
+- `status` - open, in_progress, closed
+- `labels` - Category tags
+- `title` - Feature name
+- `description` - Detailed description with implementation steps
 
-**MCP tools available to the agent:**
-- `feature_get_stats` - Progress statistics
-- `feature_get_next` - Get highest-priority pending feature
-- `feature_get_for_regression` - Random passing features for regression testing
-- `feature_mark_passing` - Mark feature complete (closes beads issue)
-- `feature_mark_in_progress` - Lock feature for current session
-- `feature_clear_in_progress` - Release lock
-- `feature_skip` - Move feature to end of queue
-- `feature_create_bulk` - Initialize all features (used by initializer)
+**Agent uses beads CLI directly:**
+- `bd stats` - Progress statistics
+- `bd ready` - Get available features (no blockers)
+- `bd list --status=open` - List pending features
+- `bd close <id>` - Mark feature complete
+- `bd create` - Create new features
 
 ### React UI (ui/)
 
@@ -201,16 +146,17 @@ Projects can be stored in any directory (registered in `~/.autocoder/registry.db
 
 ### Security Model
 
-Defense-in-depth approach configured in `client.py`:
-1. OS-level sandbox for bash commands
-2. Filesystem restricted to project directory only
-3. Bash commands validated against `ALLOWED_COMMANDS` in `security.py`
+Defense-in-depth approach using Docker containers:
+1. Each project runs in isolated Docker container
+2. Container filesystem limited to mounted project directory
+3. Claude credentials mounted read-only from host
 
 ## Claude Code Integration
 
 - `.claude/commands/create-spec.md` - `/create-spec` slash command for interactive spec creation
 - `.claude/skills/frontend-design/SKILL.md` - Skill for distinctive UI design
 - `.claude/templates/` - Prompt templates copied to new projects
+- `.claude/templates/project_claude.md.template` - CLAUDE.md template with beads workflow instructions
 
 ## Key Patterns
 
@@ -221,17 +167,17 @@ Defense-in-depth approach configured in `client.py`:
 
 ### Agent Session Flow
 
-1. Check if `.beads/` has features (determines initializer vs coding agent)
-2. Create ClaudeSDKClient with security settings
-3. Send prompt and stream response
-4. Auto-continue with 3-second delay between sessions
+1. Start project container via UI (creates `autocoder-{project}` container)
+2. Container runs Claude Code with project-specific `CLAUDE.md`
+3. Claude Code uses beads CLI to track feature progress
+4. Container stops after 15 min idle (can be restarted)
 
 ### Real-time UI Updates
 
 The UI receives updates via WebSocket (`/ws/projects/{project_name}`):
-- `progress` - Test pass counts
-- `agent_status` - Running/paused/stopped/crashed
-- `log` - Agent output lines (streamed from subprocess stdout)
+- `progress` - Feature pass counts (from `bd stats`)
+- `agent_status` - not_created/running/stopped
+- `log` - Agent output lines (streamed from `docker logs`)
 - `feature_update` - Feature status changes
 
 ### Design System

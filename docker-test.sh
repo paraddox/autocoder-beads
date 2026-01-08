@@ -1,15 +1,20 @@
 #!/bin/bash
-# Test script to build and verify the Docker container is working
-# Automatically cleans up after testing
+# =============================================================================
+# Docker Test Script for Per-Project Containers
+# =============================================================================
+# Tests the per-project Docker container architecture:
+# 1. Builds the autocoder-project image
+# 2. Starts the FastAPI server
+# 3. Creates test projects and spins up containers
+# 4. Verifies container isolation and functionality
+# 5. Cleans up everything
+#
+# Usage: ./docker-test.sh
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
-
-# Use clearly distinct test container name to avoid accidents
-TEST_CONTAINER_NAME="autocoder-TEST-EPHEMERAL-$$"
-TEST_DATA_DIR="$SCRIPT_DIR/.docker-test-data-$$"
 
 # Colors for output
 RED='\033[0;31m'
@@ -17,162 +22,295 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo "========================================"
-echo "AutoCoder Docker Build & Test"
-echo "========================================"
-echo "Test container: $TEST_CONTAINER_NAME"
-echo ""
+# Test configuration
+TEST_PROJECT_ALPHA="docker-test-alpha-$$"
+TEST_PROJECT_BETA="docker-test-beta-$$"
+TEST_DIR="/tmp/autocoder-docker-test-$$"
+SERVER_PORT=8765
+SERVER_PID=""
 
-# Cleanup function - always runs on exit
+# Cleanup function
 cleanup() {
-    echo ""
-    echo -e "${YELLOW}Cleaning up test environment...${NC}"
-    docker stop "$TEST_CONTAINER_NAME" 2>/dev/null || true
-    docker rm "$TEST_CONTAINER_NAME" 2>/dev/null || true
-    rm -rf "$TEST_DATA_DIR" 2>/dev/null || true
-    echo -e "${GREEN}Cleanup complete.${NC}"
+    echo -e "\n${YELLOW}Cleaning up...${NC}"
+
+    # Stop and remove containers if they exist
+    docker stop "autocoder-${TEST_PROJECT_ALPHA}" 2>/dev/null || true
+    docker stop "autocoder-${TEST_PROJECT_BETA}" 2>/dev/null || true
+    docker rm "autocoder-${TEST_PROJECT_ALPHA}" 2>/dev/null || true
+    docker rm "autocoder-${TEST_PROJECT_BETA}" 2>/dev/null || true
+
+    # Stop server
+    if [ -n "$SERVER_PID" ]; then
+        kill $SERVER_PID 2>/dev/null || true
+        wait $SERVER_PID 2>/dev/null || true
+    fi
+
+    # Remove test directories
+    rm -rf "$TEST_DIR"
+
+    echo -e "${GREEN}Cleanup complete${NC}"
 }
 
-# Set trap to cleanup on exit (success or failure)
+# Set trap for cleanup on exit
 trap cleanup EXIT
 
-# Step 1: Build the image
-echo -e "${YELLOW}[1/6] Building Docker image...${NC}"
-docker build -t autocoder .
-echo -e "${GREEN}Build successful!${NC}"
-echo ""
+# Helper functions
+log_step() {
+    echo -e "\n${YELLOW}=== $1 ===${NC}"
+}
 
-# Step 2: Create test data directory
-echo -e "${YELLOW}[2/6] Setting up test environment...${NC}"
-mkdir -p "$TEST_DATA_DIR/projects"
-mkdir -p "$TEST_DATA_DIR/autocoder"
-mkdir -p "$TEST_DATA_DIR/claude"
-echo -e "${GREEN}Test data directory created.${NC}"
-echo ""
+log_success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
 
-# Step 3: Load Claude credentials
-echo -e "${YELLOW}[3/6] Loading Claude credentials...${NC}"
-CLAUDE_CREDS="$HOME/.claude"
-
-if [ -f "$CLAUDE_CREDS/.credentials.json" ]; then
-    cp "$CLAUDE_CREDS/.credentials.json" "$TEST_DATA_DIR/claude/"
-    [ -f "$CLAUDE_CREDS/settings.json" ] && cp "$CLAUDE_CREDS/settings.json" "$TEST_DATA_DIR/claude/"
-    echo -e "${GREEN}Claude credentials loaded.${NC}"
-else
-    echo -e "${YELLOW}WARNING: No Claude credentials found at $CLAUDE_CREDS/.credentials.json${NC}"
-    echo "Tests will continue but agent features won't work."
-fi
-echo ""
-
-# Step 4: Start container
-echo -e "${YELLOW}[4/6] Starting test container...${NC}"
-docker run -d \
-    --name "$TEST_CONTAINER_NAME" \
-    -e ALLOW_EXTERNAL_ACCESS=true \
-    -e CORS_ORIGINS="*" \
-    -p 18888:8888 \
-    -v "$TEST_DATA_DIR:/data" \
-    autocoder
-
-echo "Waiting for container to start..."
-sleep 5
-echo -e "${GREEN}Container started!${NC}"
-echo ""
-
-# Step 5: Test API endpoints
-echo -e "${YELLOW}[5/6] Testing API endpoints...${NC}"
-
-# Test health endpoint
-echo -n "  Health check: "
-HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18888/api/health 2>/dev/null || echo "000")
-if [ "$HEALTH_RESPONSE" = "200" ]; then
-    echo -e "${GREEN}PASS${NC} (HTTP $HEALTH_RESPONSE)"
-else
-    echo -e "${RED}FAIL${NC} (HTTP $HEALTH_RESPONSE)"
-    echo ""
-    echo "Container logs:"
-    docker logs "$TEST_CONTAINER_NAME"
+log_error() {
+    echo -e "${RED}✗ $1${NC}"
     exit 1
-fi
+}
 
-# Test setup status endpoint
-echo -n "  Setup status: "
-SETUP_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18888/api/setup/status 2>/dev/null || echo "000")
-if [ "$SETUP_RESPONSE" = "200" ]; then
-    echo -e "${GREEN}PASS${NC} (HTTP $SETUP_RESPONSE)"
-else
-    echo -e "${RED}FAIL${NC} (HTTP $SETUP_RESPONSE)"
-    exit 1
-fi
+check_command() {
+    if ! command -v $1 &> /dev/null; then
+        log_error "$1 is required but not installed"
+    fi
+}
 
-# Test projects endpoint (no trailing slash)
-echo -n "  Projects API: "
-PROJECTS_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18888/api/projects 2>/dev/null || echo "000")
-if [ "$PROJECTS_RESPONSE" = "200" ]; then
-    echo -e "${GREEN}PASS${NC} (HTTP $PROJECTS_RESPONSE)"
-else
-    echo -e "${RED}FAIL${NC} (HTTP $PROJECTS_RESPONSE)"
-    exit 1
-fi
-
-# Test static files (React app)
-echo -n "  Static files: "
-INDEX_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18888/ 2>/dev/null || echo "000")
-if [ "$INDEX_RESPONSE" = "200" ]; then
-    echo -e "${GREEN}PASS${NC} (HTTP $INDEX_RESPONSE)"
-else
-    echo -e "${RED}FAIL${NC} (HTTP $INDEX_RESPONSE)"
-    exit 1
-fi
-
-echo ""
-
-# Step 6: Verify CLI tools in container
-echo -e "${YELLOW}[6/6] Verifying CLI tools in container...${NC}"
-
-# Check beads CLI
-echo -n "  beads (bd): "
-if docker exec "$TEST_CONTAINER_NAME" which bd > /dev/null 2>&1; then
-    BD_VERSION=$(docker exec "$TEST_CONTAINER_NAME" bd --version 2>/dev/null || echo "installed")
-    echo -e "${GREEN}PASS${NC} ($BD_VERSION)"
-else
-    echo -e "${YELLOW}WARN${NC} (not found - may need manual install)"
-fi
-
-# Check Claude CLI
-echo -n "  claude CLI: "
-if docker exec "$TEST_CONTAINER_NAME" which claude > /dev/null 2>&1; then
-    echo -e "${GREEN}PASS${NC}"
-else
-    echo -e "${YELLOW}WARN${NC} (not found)"
-fi
-
-# Check Python
-echo -n "  Python: "
-PYTHON_VERSION=$(docker exec "$TEST_CONTAINER_NAME" python --version 2>&1)
-echo -e "${GREEN}PASS${NC} ($PYTHON_VERSION)"
-
-# Check Node
-echo -n "  Node.js: "
-NODE_VERSION=$(docker exec "$TEST_CONTAINER_NAME" node --version 2>&1)
-echo -e "${GREEN}PASS${NC} ($NODE_VERSION)"
-
-# Check git
-echo -n "  Git: "
-GIT_VERSION=$(docker exec "$TEST_CONTAINER_NAME" git --version 2>&1)
-echo -e "${GREEN}PASS${NC} ($GIT_VERSION)"
-
-# Check Claude credentials were loaded
-echo -n "  Credentials: "
-if docker exec "$TEST_CONTAINER_NAME" test -f /data/claude/.credentials.json 2>/dev/null; then
-    echo -e "${GREEN}PASS${NC} (loaded)"
-else
-    echo -e "${YELLOW}WARN${NC} (not found)"
-fi
-
-echo ""
 echo "========================================"
+echo "AutoCoder Per-Project Docker Test"
+echo "========================================"
+echo "Test projects: $TEST_PROJECT_ALPHA, $TEST_PROJECT_BETA"
+echo ""
+
+# =============================================================================
+# Pre-flight checks
+# =============================================================================
+log_step "Pre-flight checks"
+
+check_command docker
+check_command curl
+check_command python3
+
+# Check Docker is running
+if ! docker info &> /dev/null; then
+    log_error "Docker is not running"
+fi
+log_success "Docker is running"
+
+# Check port is available
+if curl -s "http://localhost:${SERVER_PORT}" &> /dev/null; then
+    log_error "Port ${SERVER_PORT} is already in use"
+fi
+log_success "Port ${SERVER_PORT} is available"
+
+# =============================================================================
+# Build Docker image
+# =============================================================================
+log_step "Building autocoder-project image"
+
+docker build -f Dockerfile.project -t autocoder-project . || log_error "Failed to build image"
+log_success "Image built successfully"
+
+# Verify image
+if ! docker image inspect autocoder-project &> /dev/null; then
+    log_error "Image not found after build"
+fi
+log_success "Image verified"
+
+# =============================================================================
+# Start FastAPI server
+# =============================================================================
+log_step "Starting FastAPI server"
+
+# Activate venv and start server
+if [ -d "venv" ]; then
+    source venv/bin/activate
+else
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -q -r requirements.txt
+fi
+
+uvicorn server.main:app --host 127.0.0.1 --port $SERVER_PORT &
+SERVER_PID=$!
+sleep 3
+
+# Verify server is running
+if ! curl -s "http://localhost:${SERVER_PORT}/api/setup/status" | grep -q "claude_cli"; then
+    log_error "Server failed to start"
+fi
+log_success "Server started on port ${SERVER_PORT}"
+
+# =============================================================================
+# Create test projects
+# =============================================================================
+log_step "Creating test projects"
+
+mkdir -p "$TEST_DIR/$TEST_PROJECT_ALPHA" "$TEST_DIR/$TEST_PROJECT_BETA"
+
+# Initialize git repos
+for proj in "$TEST_PROJECT_ALPHA" "$TEST_PROJECT_BETA"; do
+    cd "$TEST_DIR/$proj"
+    git init -q
+    echo "# Test Project $proj" > README.md
+    git add .
+    git commit -q -m "init"
+done
+cd "$SCRIPT_DIR"
+
+log_success "Test directories created"
+
+# Register projects via API
+for proj in "$TEST_PROJECT_ALPHA" "$TEST_PROJECT_BETA"; do
+    response=$(curl -s -X POST "http://localhost:${SERVER_PORT}/api/projects" \
+        -H "Content-Type: application/json" \
+        -d "{\"name\": \"$proj\", \"path\": \"$TEST_DIR/$proj\"}")
+
+    if echo "$response" | grep -q "detail"; then
+        log_error "Failed to register project $proj: $response"
+    fi
+done
+log_success "Projects registered via API"
+
+# =============================================================================
+# Start containers and verify isolation
+# =============================================================================
+log_step "Starting project containers"
+
+# Start first container
+response=$(curl -s -X POST "http://localhost:${SERVER_PORT}/api/projects/${TEST_PROJECT_ALPHA}/agent/start" \
+    -H "Content-Type: application/json" \
+    -d '{"instruction": null}')
+
+if ! echo "$response" | grep -q '"success":true'; then
+    log_error "Failed to start container for $TEST_PROJECT_ALPHA: $response"
+fi
+log_success "Container started for $TEST_PROJECT_ALPHA"
+
+# Start second container
+response=$(curl -s -X POST "http://localhost:${SERVER_PORT}/api/projects/${TEST_PROJECT_BETA}/agent/start" \
+    -H "Content-Type: application/json" \
+    -d '{"instruction": null}')
+
+if ! echo "$response" | grep -q '"success":true'; then
+    log_error "Failed to start container for $TEST_PROJECT_BETA: $response"
+fi
+log_success "Container started for $TEST_PROJECT_BETA"
+
+sleep 2
+
+# Verify both containers are running
+log_step "Verifying container isolation"
+
+container_count=$(docker ps --filter "name=autocoder-docker-test" --format "{{.Names}}" | wc -l)
+if [ "$container_count" -ne 2 ]; then
+    log_error "Expected 2 containers, found $container_count"
+fi
+log_success "Both containers are running"
+
+# Verify volume mounts
+alpha_mount=$(docker inspect "autocoder-${TEST_PROJECT_ALPHA}" --format '{{range .Mounts}}{{if eq .Destination "/project"}}{{.Source}}{{end}}{{end}}')
+beta_mount=$(docker inspect "autocoder-${TEST_PROJECT_BETA}" --format '{{range .Mounts}}{{if eq .Destination "/project"}}{{.Source}}{{end}}{{end}}')
+
+if [ "$alpha_mount" != "$TEST_DIR/$TEST_PROJECT_ALPHA" ]; then
+    log_error "Alpha container has wrong mount: $alpha_mount"
+fi
+if [ "$beta_mount" != "$TEST_DIR/$TEST_PROJECT_BETA" ]; then
+    log_error "Beta container has wrong mount: $beta_mount"
+fi
+log_success "Volume mounts are correct and isolated"
+
+# Verify Claude and beads are installed
+if ! docker exec "autocoder-${TEST_PROJECT_ALPHA}" which claude &> /dev/null; then
+    log_error "Claude not found in container"
+fi
+if ! docker exec "autocoder-${TEST_PROJECT_ALPHA}" which bd &> /dev/null; then
+    log_error "Beads (bd) not found in container"
+fi
+log_success "Claude Code and beads CLI are available"
+
+# =============================================================================
+# Test stop and restart
+# =============================================================================
+log_step "Testing stop and restart"
+
+# Stop alpha container
+response=$(curl -s -X POST "http://localhost:${SERVER_PORT}/api/projects/${TEST_PROJECT_ALPHA}/agent/stop")
+if ! echo "$response" | grep -q '"status":"stopped"'; then
+    log_error "Failed to stop container: $response"
+fi
+log_success "Container stopped successfully"
+
+# Verify container exists but is stopped
+if ! docker ps -a --filter "name=autocoder-${TEST_PROJECT_ALPHA}" --format "{{.Status}}" | grep -q "Exited"; then
+    log_error "Container should be in Exited state"
+fi
+log_success "Container persists in stopped state"
+
+# Restart container
+response=$(curl -s -X POST "http://localhost:${SERVER_PORT}/api/projects/${TEST_PROJECT_ALPHA}/agent/start" \
+    -H "Content-Type: application/json" \
+    -d '{"instruction": null}')
+if ! echo "$response" | grep -q '"success":true'; then
+    log_error "Failed to restart container: $response"
+fi
+sleep 2
+
+if ! docker ps --filter "name=autocoder-${TEST_PROJECT_ALPHA}" --format "{{.Status}}" | grep -q "Up"; then
+    log_error "Container failed to restart"
+fi
+log_success "Container restarted successfully"
+
+# =============================================================================
+# Test container removal
+# =============================================================================
+log_step "Testing container removal"
+
+response=$(curl -s -X DELETE "http://localhost:${SERVER_PORT}/api/projects/${TEST_PROJECT_ALPHA}/agent/container")
+if ! echo "$response" | grep -q '"status":"not_created"'; then
+    log_error "Failed to remove container: $response"
+fi
+
+if docker ps -a --filter "name=autocoder-${TEST_PROJECT_ALPHA}" --format "{{.Names}}" | grep -q .; then
+    log_error "Container still exists after removal"
+fi
+log_success "Container removed successfully"
+
+# =============================================================================
+# Test status endpoint
+# =============================================================================
+log_step "Testing status endpoint"
+
+# Check running container status
+status=$(curl -s "http://localhost:${SERVER_PORT}/api/projects/${TEST_PROJECT_BETA}/agent/status")
+if ! echo "$status" | grep -q '"status":"running"'; then
+    log_error "Status should be 'running': $status"
+fi
+if ! echo "$status" | grep -q '"idle_seconds"'; then
+    log_error "Status should include idle_seconds"
+fi
+log_success "Status endpoint returns correct data"
+
+# =============================================================================
+# Delete test projects
+# =============================================================================
+log_step "Deleting test projects"
+
+curl -s -X DELETE "http://localhost:${SERVER_PORT}/api/projects/${TEST_PROJECT_ALPHA}" > /dev/null
+curl -s -X DELETE "http://localhost:${SERVER_PORT}/api/projects/${TEST_PROJECT_BETA}" > /dev/null
+log_success "Projects deleted from registry"
+
+# =============================================================================
+# Summary
+# =============================================================================
+echo -e "\n${GREEN}========================================${NC}"
 echo -e "${GREEN}All tests passed!${NC}"
-echo "========================================"
+echo -e "${GREEN}========================================${NC}"
 echo ""
-echo "Test container will be automatically removed."
+echo "Verified:"
+echo "  - Docker image builds successfully"
+echo "  - Multiple containers can run simultaneously"
+echo "  - Each container has isolated project mount"
+echo "  - Claude Code and beads CLI are installed"
+echo "  - Containers can be stopped and restarted"
+echo "  - Containers can be removed via API"
+echo "  - Status endpoint tracks container state"
+echo ""
