@@ -83,6 +83,39 @@ npm run lint     # Run ESLint
 
 **Note:** The `start_ui.bat` script serves the pre-built UI from `ui/dist/`. After making UI changes, run `npm run build` in the `ui/` directory.
 
+### Docker
+
+```bash
+# Build the image
+docker build -t autocoder .
+
+# Run with API key
+ANTHROPIC_API_KEY=sk-... ./docker-run-apikey.sh
+
+# Run with Claude credentials (requires prior `claude login`)
+./docker-run-creds.sh
+
+# Using docker-compose
+ANTHROPIC_API_KEY=sk-... docker compose up -d
+
+# Test the build
+./docker-test.sh
+
+# Stop container
+docker stop autocoder && docker rm autocoder
+```
+
+**Data persistence:** All data stored in `./data/` volume:
+- `data/autocoder/` - Project registry
+- `data/claude/` - Claude credentials
+- `data/projects/` - Projects (create here to persist)
+
+**Environment variables:**
+- `ANTHROPIC_API_KEY` - API key authentication
+- `ALLOW_EXTERNAL_ACCESS` - Enable non-localhost access (default: true in container)
+- `CORS_ORIGINS` - Allowed CORS origins (default: * in container)
+- `AUTOCODER_DATA_DIR` - Data directory path (default: /data in container)
+
 ## Architecture
 
 ### Core Python Modules
@@ -203,7 +236,8 @@ The UI receives updates via WebSocket (`/ws/projects/{project_name}`):
 
 ### Design System
 
-The UI uses a **neobrutalism** design with Tailwind CSS v4:
+The UI uses a **soft editorial** design with Tailwind CSS v4:
 - CSS variables defined in `ui/src/styles/globals.css` via `@theme` directive
-- Custom animations: `animate-slide-in`, `animate-pulse-neo`, `animate-shimmer`
-- Color tokens: `--color-neo-pending` (yellow), `--color-neo-progress` (cyan), `--color-neo-done` (green)
+- Muted, sophisticated color palette with warm charcoal text
+- Soft shadows and refined spacing
+- Color tokens: `--color-pending` (amber), `--color-progress` (blue), `--color-done` (green)
