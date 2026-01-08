@@ -152,7 +152,9 @@ Features are tracked using **beads** (git-backed issue tracking). Each target pr
 - `src/lib/api.ts` - REST API client
 - `src/lib/types.ts` - TypeScript type definitions
 - `src/components/FolderBrowser.tsx` - Server-side filesystem browser for project folder selection
-- `src/components/NewProjectModal.tsx` - Multi-step project creation wizard
+- `src/components/NewProjectModal.tsx` - Multi-step project creation wizard (persists state to `.wizard_status.json`)
+- `src/components/IncompleteProjectModal.tsx` - Resume/restart options for interrupted setup
+- `src/components/ProjectSelector.tsx` - Project dropdown with incomplete project detection
 
 ### Project Structure for Generated Apps
 
@@ -160,6 +162,7 @@ Projects can be stored in any directory (registered in `~/.autocoder/registry.db
 - `prompts/app_spec.txt` - Application specification (XML format)
 - `prompts/initializer_prompt.md` - First session prompt
 - `prompts/coding_prompt.md` - Continuation session prompt
+- `prompts/.wizard_status.json` - Wizard state for resuming interrupted setup (deleted on completion)
 - `.beads/` - Beads issue tracker for feature management
 - `.agent.lock` - Lock file to prevent multiple agent instances
 

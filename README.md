@@ -84,6 +84,8 @@ You'll see options to:
 
 For new projects, you can use the built-in `/create-spec` command to interactively create your app specification with Claude's help.
 
+**Interrupted Setup:** If you close the browser during project setup (before completing the spec), you can resume where you left off. Incomplete projects show a warning icon in the project selector, and clicking them offers options to resume or start fresh.
+
 ---
 
 ## How It Works
