@@ -21,7 +21,14 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     nodejs \
     npm \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user (required for Claude Code --dangerously-skip-permissions)
+# Use a different UID to avoid conflicts with existing ubuntu user
+# The coder user has passwordless sudo for installing packages
+RUN useradd --uid 1001 -m coder \
+    && echo "coder ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Install Claude Code CLI globally
 RUN npm install -g @anthropic-ai/claude-code
@@ -30,17 +37,42 @@ RUN npm install -g @anthropic-ai/claude-code
 RUN curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash \
     && mv /root/.local/bin/bd /usr/local/bin/bd 2>/dev/null || true
 
-# Configure git for beads operations
+# Configure git for beads operations (for root, during build)
 RUN git config --global user.email "docker@autocoder.local" \
     && git config --global user.name "AutoCoder Docker" \
     && git config --global init.defaultBranch main
 
-# Create directory for Claude credentials (mounted at runtime)
-RUN mkdir -p /root/.claude
+# Create directories for coder user
+RUN mkdir -p /home/coder/.claude \
+    && chown -R coder:coder /home/coder
+
+# Configure git for coder user
+USER coder
+RUN git config --global user.email "docker@autocoder.local" \
+    && git config --global user.name "AutoCoder Docker" \
+    && git config --global init.defaultBranch main
+
+# Switch back to root for runtime volume mounting
+USER root
 
 # Working directory is the mounted project
 WORKDIR /project
 
-# Default command - keep container running for exec commands
-# The host will use `docker exec` to run claude commands
-CMD ["tail", "-f", "/dev/null"]
+# Create entrypoint script to copy credentials at startup
+RUN cat > /entrypoint.sh << 'EOF'
+#!/bin/bash
+# Copy Claude credentials from mounted location (if exists)
+# Use shopt to enable dotglob for copying hidden files like .credentials.json
+if [ -d "/tmp/claude-creds" ]; then
+    shopt -s dotglob
+    cp -r /tmp/claude-creds/* /home/coder/.claude/ 2>/dev/null || true
+    shopt -u dotglob
+    chown -R coder:coder /home/coder/.claude
+fi
+# Keep container running
+exec tail -f /dev/null
+EOF
+RUN chmod +x /entrypoint.sh
+
+# Default command - entrypoint copies creds then keeps container alive
+CMD ["/entrypoint.sh"]

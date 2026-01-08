@@ -7,12 +7,17 @@ Provides REST API, WebSocket, and static file serving.
 """
 
 import asyncio
+import atexit
+import logging
 import os
 import shutil
+import signal
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
+
+logger = logging.getLogger(__name__)
 
 # Environment configuration for Docker support
 ALLOW_EXTERNAL_ACCESS = os.getenv("ALLOW_EXTERNAL_ACCESS", "false").lower() == "true"
@@ -61,12 +66,16 @@ async def idle_container_monitor():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown."""
+    logger.info("Starting Autonomous Coding UI server...")
+
     # Startup - start idle container monitor
     idle_monitor_task = asyncio.create_task(idle_container_monitor())
 
     yield
 
     # Shutdown - cleanup all running agents, containers, and sessions
+    logger.info("Shutting down server, cleaning up containers...")
+
     idle_monitor_task.cancel()
     try:
         await idle_monitor_task
@@ -75,6 +84,8 @@ async def lifespan(app: FastAPI):
 
     await cleanup_all_containers()
     await cleanup_assistant_sessions()
+
+    logger.info("Shutdown complete.")
 
 
 # Create FastAPI app

@@ -236,11 +236,12 @@ class ContainerManager:
                     return False, f"Failed to start container: {result.stderr}"
             else:
                 # Create new container
+                # Mount credentials to temp location (entrypoint copies to coder home)
                 cmd = [
                     "docker", "run", "-d",
                     "--name", self.container_name,
                     "-v", f"{self.project_dir}:/project",
-                    "-v", f"{self.claude_credentials_dir}:/root/.claude:ro",
+                    "-v", f"{self.claude_credentials_dir}:/tmp/claude-creds:ro",
                     "-e", "ANTHROPIC_API_KEY",  # Pass through from host
                     CONTAINER_IMAGE,
                 ]
@@ -333,10 +334,12 @@ class ContainerManager:
             self._update_activity()
 
             # Use docker exec to run claude with the instruction
-            # The --print flag outputs response without interactive mode
+            # Run as 'coder' user (non-root) to allow --dangerously-skip-permissions
+            # --dangerously-skip-permissions allows autonomous operation in sandbox
+            # --print outputs response without interactive mode
             process = await asyncio.create_subprocess_exec(
-                "docker", "exec", self.container_name,
-                "claude", "--print", "--message", instruction,
+                "docker", "exec", "-u", "coder", self.container_name,
+                "claude", "--print", "--dangerously-skip-permissions", instruction,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
@@ -446,18 +449,47 @@ async def cleanup_idle_containers() -> list[str]:
 
 async def cleanup_all_containers() -> None:
     """Stop all running containers. Called on server shutdown."""
+    logger.info("Stopping all autocoder containers...")
+
     with _managers_lock:
         managers = list(_managers.values())
 
     for manager in managers:
         try:
             if manager.status == "running":
+                logger.info(f"Stopping container: {manager.container_name}")
                 await manager.stop()
         except Exception as e:
             logger.warning(f"Error stopping container for {manager.project_name}: {e}")
 
+    # Also stop any orphaned containers not in our registry
+    await stop_orphaned_containers()
+
     with _managers_lock:
         _managers.clear()
+
+
+async def stop_orphaned_containers() -> None:
+    """Stop any autocoder-* containers not tracked in our registry."""
+    try:
+        # List all containers with autocoder- prefix
+        result = subprocess.run(
+            ["docker", "ps", "-q", "--filter", "name=autocoder-"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            container_ids = result.stdout.strip().split("\n")
+            for container_id in container_ids:
+                if container_id:
+                    logger.info(f"Stopping orphaned container: {container_id}")
+                    subprocess.run(
+                        ["docker", "stop", container_id],
+                        capture_output=True,
+                        timeout=10,
+                    )
+    except Exception as e:
+        logger.warning(f"Error stopping orphaned containers: {e}")
 
 
 def check_docker_available() -> bool:
