@@ -4,7 +4,7 @@ MCP Server for Feature Management
 ==================================
 
 Provides tools to manage features in the autonomous coding system,
-replacing the previous FastAPI-based REST API.
+using beads for git-backed issue tracking.
 
 Tools:
 - feature_get_stats: Get progress statistics
@@ -26,13 +26,11 @@ from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
-from sqlalchemy.sql.expression import func
 
 # Add parent directory to path so we can import from api module
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.database import Feature, create_database
-from api.migration import migrate_json_to_sqlite
+from api.beads_client import BeadsClient
 
 # Configuration from environment
 PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", ".")).resolve()
@@ -41,22 +39,22 @@ PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", ".")).resolve()
 # Pydantic models for input validation
 class MarkPassingInput(BaseModel):
     """Input for marking a feature as passing."""
-    feature_id: int = Field(..., description="The ID of the feature to mark as passing", ge=1)
+    feature_id: str = Field(..., description="The ID of the feature to mark as passing")
 
 
 class SkipFeatureInput(BaseModel):
     """Input for skipping a feature."""
-    feature_id: int = Field(..., description="The ID of the feature to skip", ge=1)
+    feature_id: str = Field(..., description="The ID of the feature to skip")
 
 
 class MarkInProgressInput(BaseModel):
     """Input for marking a feature as in-progress."""
-    feature_id: int = Field(..., description="The ID of the feature to mark as in-progress", ge=1)
+    feature_id: str = Field(..., description="The ID of the feature to mark as in-progress")
 
 
 class ClearInProgressInput(BaseModel):
     """Input for clearing in-progress status."""
-    feature_id: int = Field(..., description="The ID of the feature to clear in-progress status", ge=1)
+    feature_id: str = Field(..., description="The ID of the feature to clear in-progress status")
 
 
 class RegressionInput(BaseModel):
@@ -77,41 +75,39 @@ class BulkCreateInput(BaseModel):
     features: list[FeatureCreateItem] = Field(..., min_length=1, description="List of features to create")
 
 
-# Global database session maker (initialized on startup)
-_session_maker = None
-_engine = None
+# Global beads client (initialized on startup)
+_beads_client: BeadsClient | None = None
 
 
 @asynccontextmanager
 async def server_lifespan(server: FastMCP):
-    """Initialize database on startup, cleanup on shutdown."""
-    global _session_maker, _engine
+    """Initialize beads client on startup."""
+    global _beads_client
 
     # Create project directory if it doesn't exist
     PROJECT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Initialize database
-    _engine, _session_maker = create_database(PROJECT_DIR)
+    # Initialize beads client
+    _beads_client = BeadsClient(PROJECT_DIR)
 
-    # Run migration if needed (converts legacy JSON to SQLite)
-    migrate_json_to_sqlite(PROJECT_DIR, _session_maker)
+    # Initialize beads if not already done
+    _beads_client.init()
 
     yield
 
-    # Cleanup
-    if _engine:
-        _engine.dispose()
+    # Cleanup (nothing to dispose for beads)
+    _beads_client = None
 
 
 # Initialize the MCP server
 mcp = FastMCP("features", lifespan=server_lifespan)
 
 
-def get_session():
-    """Get a new database session."""
-    if _session_maker is None:
-        raise RuntimeError("Database not initialized")
-    return _session_maker()
+def get_client() -> BeadsClient:
+    """Get the beads client."""
+    if _beads_client is None:
+        raise RuntimeError("Beads client not initialized")
+    return _beads_client
 
 
 @mcp.tool()
@@ -124,21 +120,9 @@ def feature_get_stats() -> str:
     Returns:
         JSON with: passing (int), in_progress (int), total (int), percentage (float)
     """
-    session = get_session()
-    try:
-        total = session.query(Feature).count()
-        passing = session.query(Feature).filter(Feature.passes == True).count()
-        in_progress = session.query(Feature).filter(Feature.in_progress == True).count()
-        percentage = round((passing / total) * 100, 1) if total > 0 else 0.0
-
-        return json.dumps({
-            "passing": passing,
-            "in_progress": in_progress,
-            "total": total,
-            "percentage": percentage
-        }, indent=2)
-    finally:
-        session.close()
+    client = get_client()
+    stats = client.get_stats()
+    return json.dumps(stats, indent=2)
 
 
 @mcp.tool()
@@ -152,21 +136,13 @@ def feature_get_next() -> str:
         JSON with feature details (id, priority, category, name, description, steps, passes, in_progress)
         or error message if all features are passing.
     """
-    session = get_session()
-    try:
-        feature = (
-            session.query(Feature)
-            .filter(Feature.passes == False)
-            .order_by(Feature.priority.asc(), Feature.id.asc())
-            .first()
-        )
+    client = get_client()
+    feature = client.get_next()
 
-        if feature is None:
-            return json.dumps({"error": "All features are passing! No more work to do."})
+    if feature is None:
+        return json.dumps({"error": "All features are passing! No more work to do."})
 
-        return json.dumps(feature.to_dict(), indent=2)
-    finally:
-        session.close()
+    return json.dumps(feature, indent=2)
 
 
 @mcp.tool()
@@ -185,27 +161,18 @@ def feature_get_for_regression(
     Returns:
         JSON with: features (list of feature objects), count (int)
     """
-    session = get_session()
-    try:
-        features = (
-            session.query(Feature)
-            .filter(Feature.passes == True)
-            .order_by(func.random())
-            .limit(limit)
-            .all()
-        )
+    client = get_client()
+    features = client.get_for_regression(limit)
 
-        return json.dumps({
-            "features": [f.to_dict() for f in features],
-            "count": len(features)
-        }, indent=2)
-    finally:
-        session.close()
+    return json.dumps({
+        "features": features,
+        "count": len(features)
+    }, indent=2)
 
 
 @mcp.tool()
 def feature_mark_passing(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as passing", ge=1)]
+    feature_id: Annotated[str, Field(description="The ID of the feature to mark as passing")]
 ) -> str:
     """Mark a feature as passing after successful implementation.
 
@@ -218,26 +185,18 @@ def feature_mark_passing(
     Returns:
         JSON with the updated feature details, or error if not found.
     """
-    session = get_session()
-    try:
-        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+    client = get_client()
+    feature = client.mark_passing(feature_id)
 
-        if feature is None:
-            return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+    if feature is None:
+        return json.dumps({"error": f"Feature with ID {feature_id} not found"})
 
-        feature.passes = True
-        feature.in_progress = False
-        session.commit()
-        session.refresh(feature)
-
-        return json.dumps(feature.to_dict(), indent=2)
-    finally:
-        session.close()
+    return json.dumps(feature, indent=2)
 
 
 @mcp.tool()
 def feature_skip(
-    feature_id: Annotated[int, Field(description="The ID of the feature to skip", ge=1)]
+    feature_id: Annotated[str, Field(description="The ID of the feature to skip")]
 ) -> str:
     """Skip a feature by moving it to the end of the priority queue.
 
@@ -246,7 +205,7 @@ def feature_skip(
     - External blockers (missing assets, unclear requirements)
     - Technical prerequisites that need to be addressed first
 
-    The feature's priority is set to max_priority + 1, so it will be
+    The feature's priority is set to P4, so it will be
     worked on after all other pending features. Also clears the in_progress
     flag so the feature returns to "pending" status.
 
@@ -256,41 +215,21 @@ def feature_skip(
     Returns:
         JSON with skip details: id, name, old_priority, new_priority, message
     """
-    session = get_session()
-    try:
-        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+    client = get_client()
+    result = client.skip(feature_id)
 
-        if feature is None:
-            return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+    if result is None:
+        return json.dumps({"error": f"Feature with ID {feature_id} not found"})
 
-        if feature.passes:
-            return json.dumps({"error": "Cannot skip a feature that is already passing"})
+    if "error" in result:
+        return json.dumps(result)
 
-        old_priority = feature.priority
-
-        # Get max priority and set this feature to max + 1
-        max_priority_result = session.query(Feature.priority).order_by(Feature.priority.desc()).first()
-        new_priority = (max_priority_result[0] + 1) if max_priority_result else 1
-
-        feature.priority = new_priority
-        feature.in_progress = False
-        session.commit()
-        session.refresh(feature)
-
-        return json.dumps({
-            "id": feature.id,
-            "name": feature.name,
-            "old_priority": old_priority,
-            "new_priority": new_priority,
-            "message": f"Feature '{feature.name}' moved to end of queue"
-        }, indent=2)
-    finally:
-        session.close()
+    return json.dumps(result, indent=2)
 
 
 @mcp.tool()
 def feature_mark_in_progress(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as in-progress", ge=1)]
+    feature_id: Annotated[str, Field(description="The ID of the feature to mark as in-progress")]
 ) -> str:
     """Mark a feature as in-progress. Call immediately after feature_get_next().
 
@@ -303,31 +242,30 @@ def feature_mark_in_progress(
     Returns:
         JSON with the updated feature details, or error if not found or already in-progress.
     """
-    session = get_session()
-    try:
-        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+    client = get_client()
 
-        if feature is None:
-            return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+    # Check current state
+    current = client.get_feature(feature_id)
+    if current is None:
+        return json.dumps({"error": f"Feature with ID {feature_id} not found"})
 
-        if feature.passes:
-            return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
+    if current.get("passes"):
+        return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
 
-        if feature.in_progress:
-            return json.dumps({"error": f"Feature with ID {feature_id} is already in-progress"})
+    if current.get("in_progress"):
+        return json.dumps({"error": f"Feature with ID {feature_id} is already in-progress"})
 
-        feature.in_progress = True
-        session.commit()
-        session.refresh(feature)
+    feature = client.mark_in_progress(feature_id)
 
-        return json.dumps(feature.to_dict(), indent=2)
-    finally:
-        session.close()
+    if feature is None:
+        return json.dumps({"error": f"Failed to mark feature {feature_id} as in-progress"})
+
+    return json.dumps(feature, indent=2)
 
 
 @mcp.tool()
 def feature_clear_in_progress(
-    feature_id: Annotated[int, Field(description="The ID of the feature to clear in-progress status", ge=1)]
+    feature_id: Annotated[str, Field(description="The ID of the feature to clear in-progress status")]
 ) -> str:
     """Clear in-progress status from a feature.
 
@@ -340,20 +278,13 @@ def feature_clear_in_progress(
     Returns:
         JSON with the updated feature details, or error if not found.
     """
-    session = get_session()
-    try:
-        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+    client = get_client()
+    feature = client.clear_in_progress(feature_id)
 
-        if feature is None:
-            return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+    if feature is None:
+        return json.dumps({"error": f"Feature with ID {feature_id} not found"})
 
-        feature.in_progress = False
-        session.commit()
-        session.refresh(feature)
-
-        return json.dumps(feature.to_dict(), indent=2)
-    finally:
-        session.close()
+    return json.dumps(feature, indent=2)
 
 
 @mcp.tool()
@@ -378,39 +309,17 @@ def feature_create_bulk(
     Returns:
         JSON with: created (int) - number of features created
     """
-    session = get_session()
-    try:
-        # Get the starting priority
-        max_priority_result = session.query(Feature.priority).order_by(Feature.priority.desc()).first()
-        start_priority = (max_priority_result[0] + 1) if max_priority_result else 1
+    client = get_client()
 
-        created_count = 0
-        for i, feature_data in enumerate(features):
-            # Validate required fields
-            if not all(key in feature_data for key in ["category", "name", "description", "steps"]):
-                return json.dumps({
-                    "error": f"Feature at index {i} missing required fields (category, name, description, steps)"
-                })
+    # Validate required fields
+    for i, feature_data in enumerate(features):
+        if not all(key in feature_data for key in ["category", "name", "description", "steps"]):
+            return json.dumps({
+                "error": f"Feature at index {i} missing required fields (category, name, description, steps)"
+            })
 
-            db_feature = Feature(
-                priority=start_priority + i,
-                category=feature_data["category"],
-                name=feature_data["name"],
-                description=feature_data["description"],
-                steps=feature_data["steps"],
-                passes=False,
-            )
-            session.add(db_feature)
-            created_count += 1
-
-        session.commit()
-
-        return json.dumps({"created": created_count}, indent=2)
-    except Exception as e:
-        session.rollback()
-        return json.dumps({"error": str(e)})
-    finally:
-        session.close()
+    created = client.bulk_create(features)
+    return json.dumps({"created": created}, indent=2)
 
 
 if __name__ == "__main__":

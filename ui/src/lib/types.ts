@@ -58,7 +58,7 @@ export interface ProjectPrompts {
 
 // Feature types
 export interface Feature {
-  id: number
+  id: string  // beads uses string IDs like "feat-1"
   priority: number
   category: string
   name: string
@@ -119,7 +119,7 @@ export interface WSProgressMessage {
 
 export interface WSFeatureUpdateMessage {
   type: 'feature_update'
-  feature_id: number
+  feature_id: string  // beads uses string IDs
   passes: boolean
 }
 

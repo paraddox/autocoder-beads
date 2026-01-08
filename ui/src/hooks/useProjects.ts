@@ -76,7 +76,7 @@ export function useDeleteFeature(projectName: string) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (featureId: number) => api.deleteFeature(projectName, featureId),
+    mutationFn: (featureId: string) => api.deleteFeature(projectName, featureId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['features', projectName] })
     },
@@ -87,7 +87,7 @@ export function useSkipFeature(projectName: string) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (featureId: number) => api.skipFeature(projectName, featureId),
+    mutationFn: (featureId: string) => api.skipFeature(projectName, featureId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['features', projectName] })
     },

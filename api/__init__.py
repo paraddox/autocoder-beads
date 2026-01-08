@@ -2,9 +2,9 @@
 API Package
 ============
 
-Database models and utilities for feature management.
+Beads client for feature management using git-backed issue tracking.
 """
 
-from api.database import Feature, create_database, get_database_path
+from api.beads_client import BeadsClient, FeatureDict
 
-__all__ = ["Feature", "create_database", "get_database_path"]
+__all__ = ["BeadsClient", "FeatureDict"]

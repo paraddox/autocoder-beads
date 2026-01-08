@@ -2,12 +2,12 @@
 Features Router
 ===============
 
-API endpoints for feature/test case management.
+API endpoints for feature/test case management using beads.
 """
 
 import logging
 import re
-from contextlib import contextmanager
+import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -18,37 +18,20 @@ from ..schemas import (
     FeatureResponse,
 )
 
-# Lazy imports to avoid circular dependencies
-_create_database = None
-_Feature = None
+# Add parent to path for imports
+_root = Path(__file__).parent.parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+
+from api.beads_client import BeadsClient
 
 logger = logging.getLogger(__name__)
 
 
 def _get_project_path(project_name: str) -> Path:
     """Get project path from registry."""
-    import sys
-    root = Path(__file__).parent.parent.parent
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
     from registry import get_project_path
     return get_project_path(project_name)
-
-
-def _get_db_classes():
-    """Lazy import of database classes."""
-    global _create_database, _Feature
-    if _create_database is None:
-        import sys
-        from pathlib import Path
-        root = Path(__file__).parent.parent.parent
-        if str(root) not in sys.path:
-            sys.path.insert(0, str(root))
-        from api.database import Feature, create_database
-        _create_database = create_database
-        _Feature = Feature
-    return _create_database, _Feature
 
 
 router = APIRouter(prefix="/api/projects/{project_name}/features", tags=["features"])
@@ -64,32 +47,22 @@ def validate_project_name(name: str) -> str:
     return name
 
 
-@contextmanager
-def get_db_session(project_dir: Path):
-    """
-    Context manager for database sessions.
-    Ensures session is always closed, even on exceptions.
-    """
-    create_database, _ = _get_db_classes()
-    _, SessionLocal = create_database(project_dir)
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
+def _get_beads_client(project_dir: Path) -> BeadsClient:
+    """Get a BeadsClient for the project."""
+    return BeadsClient(project_dir)
 
 
-def feature_to_response(f) -> FeatureResponse:
-    """Convert a Feature model to a FeatureResponse."""
+def feature_to_response(feature: dict) -> FeatureResponse:
+    """Convert a feature dict to a FeatureResponse."""
     return FeatureResponse(
-        id=f.id,
-        priority=f.priority,
-        category=f.category,
-        name=f.name,
-        description=f.description,
-        steps=f.steps if isinstance(f.steps, list) else [],
-        passes=f.passes,
-        in_progress=f.in_progress,
+        id=str(feature.get("id", "")),
+        priority=feature.get("priority", 999),
+        category=feature.get("category", ""),
+        name=feature.get("name", ""),
+        description=feature.get("description", ""),
+        steps=feature.get("steps", []),
+        passes=feature.get("passes", False),
+        in_progress=feature.get("in_progress", False),
     )
 
 
@@ -100,7 +73,7 @@ async def list_features(project_name: str):
 
     Returns features in three lists:
     - pending: passes=False, not currently being worked on
-    - in_progress: features currently being worked on (tracked via agent output)
+    - in_progress: features currently being worked on
     - done: passes=True
     """
     project_name = validate_project_name(project_name)
@@ -112,39 +85,38 @@ async def list_features(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    db_file = project_dir / "features.db"
-    if not db_file.exists():
+    client = _get_beads_client(project_dir)
+
+    # If beads is not initialized, return empty lists
+    if not client.is_initialized():
         return FeatureListResponse(pending=[], in_progress=[], done=[])
 
-    _, Feature = _get_db_classes()
-
     try:
-        with get_db_session(project_dir) as session:
-            all_features = session.query(Feature).order_by(Feature.priority).all()
+        all_features = client.list_all()
 
-            pending = []
-            in_progress = []
-            done = []
+        pending = []
+        in_progress = []
+        done = []
 
-            for f in all_features:
-                feature_response = feature_to_response(f)
-                if f.passes:
-                    done.append(feature_response)
-                elif f.in_progress:
-                    in_progress.append(feature_response)
-                else:
-                    pending.append(feature_response)
+        for f in all_features:
+            feature_response = feature_to_response(f)
+            if f.get("passes"):
+                done.append(feature_response)
+            elif f.get("in_progress"):
+                in_progress.append(feature_response)
+            else:
+                pending.append(feature_response)
 
-            return FeatureListResponse(
-                pending=pending,
-                in_progress=in_progress,
-                done=done,
-            )
+        return FeatureListResponse(
+            pending=pending,
+            in_progress=in_progress,
+            done=done,
+        )
     except HTTPException:
         raise
     except Exception:
-        logger.exception("Database error in list_features")
-        raise HTTPException(status_code=500, detail="Database error occurred")
+        logger.exception("Error in list_features")
+        raise HTTPException(status_code=500, detail="Error occurred while listing features")
 
 
 @router.post("", response_model=FeatureResponse)
@@ -159,32 +131,34 @@ async def create_feature(project_name: str, feature: FeatureCreate):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    _, Feature = _get_db_classes()
+    client = _get_beads_client(project_dir)
 
     try:
-        with get_db_session(project_dir) as session:
-            # Get next priority if not specified
-            if feature.priority is None:
-                max_priority = session.query(Feature).order_by(Feature.priority.desc()).first()
-                priority = (max_priority.priority + 1) if max_priority else 1
-            else:
-                priority = feature.priority
+        # Initialize beads if needed
+        if not client.is_initialized():
+            client.init()
 
-            # Create new feature
-            db_feature = Feature(
-                priority=priority,
-                category=feature.category,
-                name=feature.name,
-                description=feature.description,
-                steps=feature.steps,
-                passes=False,
-            )
+        # Determine priority
+        priority = feature.priority if feature.priority is not None else 999
 
-            session.add(db_feature)
-            session.commit()
-            session.refresh(db_feature)
+        # Create the feature
+        feature_id = client.create(
+            category=feature.category,
+            name=feature.name,
+            description=feature.description,
+            steps=feature.steps,
+            priority=priority,
+        )
 
-            return feature_to_response(db_feature)
+        if not feature_id:
+            raise HTTPException(status_code=500, detail="Failed to create feature")
+
+        # Get the created feature
+        created = client.get_feature(feature_id)
+        if not created:
+            raise HTTPException(status_code=500, detail="Feature created but could not be retrieved")
+
+        return feature_to_response(created)
     except HTTPException:
         raise
     except Exception:
@@ -193,7 +167,7 @@ async def create_feature(project_name: str, feature: FeatureCreate):
 
 
 @router.get("/{feature_id}", response_model=FeatureResponse)
-async def get_feature(project_name: str, feature_id: int):
+async def get_feature(project_name: str, feature_id: str):
     """Get details of a specific feature."""
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -204,29 +178,27 @@ async def get_feature(project_name: str, feature_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    db_file = project_dir / "features.db"
-    if not db_file.exists():
-        raise HTTPException(status_code=404, detail="No features database found")
+    client = _get_beads_client(project_dir)
 
-    _, Feature = _get_db_classes()
+    if not client.is_initialized():
+        raise HTTPException(status_code=404, detail="No features found")
 
     try:
-        with get_db_session(project_dir) as session:
-            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+        feature = client.get_feature(feature_id)
 
-            if not feature:
-                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+        if not feature:
+            raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
-            return feature_to_response(feature)
+        return feature_to_response(feature)
     except HTTPException:
         raise
     except Exception:
-        logger.exception("Database error in get_feature")
-        raise HTTPException(status_code=500, detail="Database error occurred")
+        logger.exception("Error in get_feature")
+        raise HTTPException(status_code=500, detail="Error occurred")
 
 
 @router.delete("/{feature_id}")
-async def delete_feature(project_name: str, feature_id: int):
+async def delete_feature(project_name: str, feature_id: str):
     """Delete a feature."""
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -237,19 +209,23 @@ async def delete_feature(project_name: str, feature_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    _, Feature = _get_db_classes()
+    client = _get_beads_client(project_dir)
+
+    if not client.is_initialized():
+        raise HTTPException(status_code=404, detail="No features found")
 
     try:
-        with get_db_session(project_dir) as session:
-            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+        # Check if feature exists first
+        feature = client.get_feature(feature_id)
+        if not feature:
+            raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
-            if not feature:
-                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+        success = client.delete(feature_id)
 
-            session.delete(feature)
-            session.commit()
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete feature")
 
-            return {"success": True, "message": f"Feature {feature_id} deleted"}
+        return {"success": True, "message": f"Feature {feature_id} deleted"}
     except HTTPException:
         raise
     except Exception:
@@ -258,11 +234,11 @@ async def delete_feature(project_name: str, feature_id: int):
 
 
 @router.patch("/{feature_id}/skip")
-async def skip_feature(project_name: str, feature_id: int):
+async def skip_feature(project_name: str, feature_id: str):
     """
     Mark a feature as skipped by moving it to the end of the priority queue.
 
-    This doesn't delete the feature but gives it a very high priority number
+    This doesn't delete the feature but gives it a very low priority
     so it will be processed last.
     """
     project_name = validate_project_name(project_name)
@@ -274,22 +250,21 @@ async def skip_feature(project_name: str, feature_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    _, Feature = _get_db_classes()
+    client = _get_beads_client(project_dir)
+
+    if not client.is_initialized():
+        raise HTTPException(status_code=404, detail="No features found")
 
     try:
-        with get_db_session(project_dir) as session:
-            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+        result = client.skip(feature_id)
 
-            if not feature:
-                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
-            # Set priority to max + 1000 to push to end
-            max_priority = session.query(Feature).order_by(Feature.priority.desc()).first()
-            feature.priority = (max_priority.priority if max_priority else 0) + 1000
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
 
-            session.commit()
-
-            return {"success": True, "message": f"Feature {feature_id} moved to end of queue"}
+        return {"success": True, "message": f"Feature {feature_id} moved to end of queue"}
     except HTTPException:
         raise
     except Exception:

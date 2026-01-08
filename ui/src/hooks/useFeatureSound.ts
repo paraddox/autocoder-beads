@@ -53,9 +53,9 @@ function playChime(type: SoundType): void {
 }
 
 interface FeatureState {
-  pendingIds: Set<number>
-  inProgressIds: Set<number>
-  doneIds: Set<number>
+  pendingIds: Set<string>
+  inProgressIds: Set<string>
+  doneIds: Set<string>
 }
 
 function getFeatureState(features: FeatureListResponse | undefined): FeatureState {

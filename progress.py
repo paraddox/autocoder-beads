@@ -3,15 +3,16 @@ Progress Tracking Utilities
 ===========================
 
 Functions for tracking and displaying progress of the autonomous coding agent.
-Uses direct SQLite access for database queries.
+Uses beads for git-backed issue tracking.
 """
 
 import json
 import os
-import sqlite3
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+
+from api.beads_client import BeadsClient
 
 WEBHOOK_URL = os.environ.get("PROGRESS_N8N_WEBHOOK_URL")
 PROGRESS_CACHE_FILE = ".progress_cache"
@@ -19,45 +20,46 @@ PROGRESS_CACHE_FILE = ".progress_cache"
 
 def has_features(project_dir: Path) -> bool:
     """
-    Check if the project has features in the database.
+    Check if the project has features.
 
     This is used to determine if the initializer agent needs to run.
-    We check the database directly (not via API) since the API server
-    may not be running yet when this check is performed.
 
     Returns True if:
-    - features.db exists AND has at least 1 feature, OR
-    - feature_list.json exists (legacy format)
+    - .beads/ exists with issues, OR
+    - features.db exists (legacy, for backward compatibility)
 
     Returns False if no features exist (initializer needs to run).
     """
-    import sqlite3
+    # Check beads first
+    client = BeadsClient(project_dir)
+    if client.has_features():
+        return True
 
-    # Check legacy JSON file first
+    # Check legacy SQLite database for backward compatibility
+    db_file = project_dir / "features.db"
+    if db_file.exists():
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db_file)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM features")
+            count = cursor.fetchone()[0]
+            conn.close()
+            return count > 0
+        except Exception:
+            pass
+
+    # Check legacy JSON file
     json_file = project_dir / "feature_list.json"
     if json_file.exists():
         return True
 
-    # Check SQLite database
-    db_file = project_dir / "features.db"
-    if not db_file.exists():
-        return False
-
-    try:
-        conn = sqlite3.connect(db_file)
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM features")
-        count = cursor.fetchone()[0]
-        conn.close()
-        return count > 0
-    except Exception:
-        # Database exists but can't be read or has no features table
-        return False
+    return False
 
 
 def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
     """
-    Count passing, in_progress, and total tests via direct database access.
+    Count passing, in_progress, and total tests.
 
     Args:
         project_dir: Directory containing the project
@@ -65,28 +67,38 @@ def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
     Returns:
         (passing_count, in_progress_count, total_count)
     """
-    db_file = project_dir / "features.db"
-    if not db_file.exists():
-        return 0, 0, 0
+    # Try beads first
+    client = BeadsClient(project_dir)
+    if client.is_initialized():
+        stats = client.get_stats()
+        return (
+            stats.get("passing", 0),
+            stats.get("in_progress", 0),
+            stats.get("total", 0),
+        )
 
-    try:
-        conn = sqlite3.connect(db_file)
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM features")
-        total = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM features WHERE passes = 1")
-        passing = cursor.fetchone()[0]
-        # Handle case where in_progress column doesn't exist yet
+    # Fall back to legacy SQLite database
+    db_file = project_dir / "features.db"
+    if db_file.exists():
         try:
-            cursor.execute("SELECT COUNT(*) FROM features WHERE in_progress = 1")
-            in_progress = cursor.fetchone()[0]
-        except sqlite3.OperationalError:
-            in_progress = 0
-        conn.close()
-        return passing, in_progress, total
-    except Exception as e:
-        print(f"[Database error in count_passing_tests: {e}]")
-        return 0, 0, 0
+            import sqlite3
+            conn = sqlite3.connect(db_file)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM features")
+            total = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM features WHERE passes = 1")
+            passing = cursor.fetchone()[0]
+            try:
+                cursor.execute("SELECT COUNT(*) FROM features WHERE in_progress = 1")
+                in_progress = cursor.fetchone()[0]
+            except sqlite3.OperationalError:
+                in_progress = 0
+            conn.close()
+            return passing, in_progress, total
+        except Exception as e:
+            print(f"[Database error in count_passing_tests: {e}]")
+
+    return 0, 0, 0
 
 
 def get_all_passing_features(project_dir: Path) -> list[dict]:
@@ -99,24 +111,31 @@ def get_all_passing_features(project_dir: Path) -> list[dict]:
     Returns:
         List of dicts with id, category, name for each passing feature
     """
-    db_file = project_dir / "features.db"
-    if not db_file.exists():
-        return []
+    # Try beads first
+    client = BeadsClient(project_dir)
+    if client.is_initialized():
+        return client.get_all_passing()
 
-    try:
-        conn = sqlite3.connect(db_file)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, category, name FROM features WHERE passes = 1 ORDER BY priority ASC"
-        )
-        features = [
-            {"id": row[0], "category": row[1], "name": row[2]}
-            for row in cursor.fetchall()
-        ]
-        conn.close()
-        return features
-    except Exception:
-        return []
+    # Fall back to legacy SQLite database
+    db_file = project_dir / "features.db"
+    if db_file.exists():
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db_file)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, category, name FROM features WHERE passes = 1 ORDER BY priority ASC"
+            )
+            features = [
+                {"id": row[0], "category": row[1], "name": row[2]}
+                for row in cursor.fetchall()
+            ]
+            conn.close()
+            return features
+        except Exception:
+            pass
+
+    return []
 
 
 def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
@@ -133,7 +152,7 @@ def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
         try:
             cache_data = json.loads(cache_file.read_text())
             previous = cache_data.get("count", 0)
-            previous_passing_ids = set(cache_data.get("passing_ids", []))
+            previous_passing_ids = set(str(x) for x in cache_data.get("passing_ids", []))
         except Exception:
             previous = 0
 
@@ -147,10 +166,10 @@ def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
         # In this case, we can't reliably identify which specific tests are new
         is_old_cache_format = len(previous_passing_ids) == 0 and previous > 0
 
-        # Get all passing features via direct database access
+        # Get all passing features
         all_passing = get_all_passing_features(project_dir)
         for feature in all_passing:
-            feature_id = feature.get("id")
+            feature_id = str(feature.get("id"))
             current_passing_ids.append(feature_id)
             # Only identify individual new tests if we have previous IDs to compare
             if not is_old_cache_format and feature_id not in previous_passing_ids:
@@ -192,7 +211,7 @@ def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
         # Update cache even if no change (for initial state)
         if not cache_file.exists():
             all_passing = get_all_passing_features(project_dir)
-            current_passing_ids = [f.get("id") for f in all_passing]
+            current_passing_ids = [str(f.get("id")) for f in all_passing]
             cache_file.write_text(
                 json.dumps({"count": passing, "passing_ids": current_passing_ids})
             )

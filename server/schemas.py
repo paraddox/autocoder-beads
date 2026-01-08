@@ -80,7 +80,7 @@ class FeatureCreate(FeatureBase):
 
 class FeatureResponse(FeatureBase):
     """Response schema for a feature."""
-    id: int
+    id: str  # beads uses string IDs like "feat-1"
     priority: int
     passes: bool
     in_progress: bool
@@ -147,7 +147,7 @@ class WSProgressMessage(BaseModel):
 class WSFeatureUpdateMessage(BaseModel):
     """WebSocket message for feature status updates."""
     type: Literal["feature_update"] = "feature_update"
-    feature_id: int
+    feature_id: str  # beads uses string IDs
     passes: bool
 
 

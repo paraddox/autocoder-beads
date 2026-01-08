@@ -95,18 +95,18 @@ export async function createFeature(projectName: string, feature: FeatureCreate)
   })
 }
 
-export async function getFeature(projectName: string, featureId: number): Promise<Feature> {
-  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}`)
+export async function getFeature(projectName: string, featureId: string): Promise<Feature> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${encodeURIComponent(featureId)}`)
 }
 
-export async function deleteFeature(projectName: string, featureId: number): Promise<void> {
-  await fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}`, {
+export async function deleteFeature(projectName: string, featureId: string): Promise<void> {
+  await fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${encodeURIComponent(featureId)}`, {
     method: 'DELETE',
   })
 }
 
-export async function skipFeature(projectName: string, featureId: number): Promise<void> {
-  await fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/skip`, {
+export async function skipFeature(projectName: string, featureId: string): Promise<void> {
+  await fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${encodeURIComponent(featureId)}/skip`, {
     method: 'PATCH',
   })
 }
