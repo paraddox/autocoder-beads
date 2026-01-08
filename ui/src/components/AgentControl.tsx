@@ -50,7 +50,7 @@ export function AgentControl({ projectName, status, yoloMode = false }: AgentCon
 
       {/* Control Buttons */}
       <div className="flex gap-1.5">
-        {status === 'stopped' || status === 'crashed' ? (
+        {status === 'not_created' || status === 'stopped' || status === 'crashed' ? (
           <>
             {/* YOLO Toggle */}
             <button
@@ -128,7 +128,12 @@ export function AgentControl({ projectName, status, yoloMode = false }: AgentCon
 }
 
 function StatusIndicator({ status }: { status: AgentStatus }) {
-  const statusConfig = {
+  const statusConfig: Record<AgentStatus, { color: string; label: string; pulse: boolean }> = {
+    not_created: {
+      color: 'var(--color-text-muted)',
+      label: 'Not Created',
+      pulse: false,
+    },
     stopped: {
       color: 'var(--color-text-muted)',
       label: 'Stopped',
@@ -151,7 +156,7 @@ function StatusIndicator({ status }: { status: AgentStatus }) {
     },
   }
 
-  const config = statusConfig[status]
+  const config = statusConfig[status] || statusConfig.stopped
 
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-md">

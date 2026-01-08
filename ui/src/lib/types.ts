@@ -101,12 +101,14 @@ export interface FeatureCreate {
 }
 
 // Agent types
-export type AgentStatus = 'stopped' | 'running' | 'paused' | 'crashed'
+export type AgentStatus = 'not_created' | 'stopped' | 'running' | 'paused' | 'crashed'
 
 export interface AgentStatusResponse {
   status: AgentStatus
+  container_name: string | null
   pid: number | null
   started_at: string | null
+  idle_seconds: number
   yolo_mode: boolean
 }
 
