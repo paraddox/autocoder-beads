@@ -1,10 +1,10 @@
 <!-- YOLO MODE PROMPT - Keep synchronized with coding_prompt.template.md -->
-<!-- Last synced: 2026-01-01 -->
+<!-- Last synced: 2026-01-09 -->
 
 ## YOLO MODE - Rapid Prototyping (Testing Disabled)
 
 **WARNING:** This mode skips all browser testing and regression tests.
-Features are marked as passing after lint/type-check succeeds.
+Features are marked as complete after lint/type-check succeeds.
 Use for rapid prototyping only - not for production-quality development.
 
 ---
@@ -26,26 +26,22 @@ pwd
 ls -la
 
 # 3. Read the project specification to understand what you're building
-cat app_spec.txt
+cat prompts/app_spec.txt
 
 # 4. Read progress notes from previous sessions
 cat claude-progress.txt
 
 # 5. Check recent git history
 git log --oneline -20
-```
 
-Then use MCP tools to check feature status:
-
-```
-# 6. Get progress statistics (passing/total counts)
-Use the feature_get_stats tool
+# 6. Get progress statistics
+bd stats
 
 # 7. Get the next feature to work on
-Use the feature_get_next tool
+bd ready
 ```
 
-Understanding the `app_spec.txt` is critical - it contains the full requirements
+Understanding the `prompts/app_spec.txt` is critical - it contains the full requirements
 for the application you're building.
 
 ### STEP 2: START SERVERS (IF NOT RUNNING)
@@ -63,16 +59,16 @@ Otherwise, start servers manually and document the process.
 
 Get the next feature to implement:
 
-```
+```bash
 # Get the highest-priority pending feature
-Use the feature_get_next tool
+bd ready
 ```
 
-Once you've retrieved the feature, **immediately mark it as in-progress**:
+Once you've chosen a feature, **immediately mark it as in-progress**:
 
-```
+```bash
 # Mark feature as in-progress to prevent other sessions from working on it
-Use the feature_mark_in_progress tool with feature_id=42
+bd update <feature-id> --status=in_progress
 ```
 
 Focus on completing one feature in this session before moving on to other features.
@@ -101,8 +97,9 @@ If a feature requires building other functionality first, **build that functiona
 
 If you must skip (truly external blocker only):
 
-```
-Use the feature_skip tool with feature_id={id}
+```bash
+bd update <feature-id> --status=blocked
+bd comments <feature-id> add "Blocked: <reason>"
 ```
 
 Document the SPECIFIC external blocker in `claude-progress.txt`. "Functionality not built" is NEVER a valid reason.
@@ -133,19 +130,17 @@ ruff check .
 mypy .
 ```
 
-**If lint/type-check passes:** Proceed to mark the feature as passing.
+**If lint/type-check passes:** Proceed to mark the feature as complete.
 
 **If lint/type-check fails:** Fix the errors before proceeding.
 
 ### STEP 6: UPDATE FEATURE STATUS
 
-**YOU CAN ONLY MODIFY ONE FIELD: "passes"**
+After lint/type-check passes, mark the feature as complete:
 
-After lint/type-check passes, mark the feature as passing:
-
-```
-# Mark feature #42 as passing (replace 42 with the actual feature ID)
-Use the feature_mark_passing tool with feature_id=42
+```bash
+# Mark feature as complete (replace <id> with the actual feature ID)
+bd close <feature-id>
 ```
 
 **NEVER:**
@@ -166,7 +161,7 @@ git commit -m "Implement [feature name] - YOLO mode
 
 - Added [specific changes]
 - Lint/type-check passing
-- Marked feature #X as passing
+- Marked feature #X as complete
 "
 ```
 
@@ -178,7 +173,13 @@ Update `claude-progress.txt` with:
 - Which feature(s) you completed
 - Any issues discovered or fixed
 - What should be worked on next
-- Current completion status (e.g., "45/200 features passing")
+- Current completion status (e.g., "45/200 features complete")
+
+Then sync beads:
+
+```bash
+bd sync
+```
 
 ### STEP 9: END SESSION CLEANLY
 
@@ -186,45 +187,47 @@ Before context fills up:
 
 1. Commit all working code
 2. Update claude-progress.txt
-3. Mark features as passing if lint/type-check verified
+3. Sync beads: `bd sync`
 4. Ensure no uncommitted changes
 5. Leave app in working state
 
 ---
 
-## FEATURE TOOL USAGE RULES (CRITICAL - DO NOT VIOLATE)
+## BEADS COMMAND REFERENCE
 
-The feature tools exist to reduce token usage. **DO NOT make exploratory queries.**
+```bash
+# Get progress stats
+bd stats
 
-### ALLOWED Feature Tools (ONLY these):
+# Get features ready to work on (no blockers)
+bd ready
 
+# List all open features
+bd list --status=open
+
+# List features in progress
+bd list --status=in_progress
+
+# View feature details
+bd show <feature-id>
+
+# Claim a feature
+bd update <feature-id> --status=in_progress
+
+# Mark feature as complete
+bd close <feature-id>
+
+# Mark feature as blocked
+bd update <feature-id> --status=blocked
+
+# Add a comment to a feature
+bd comments <feature-id> add "Your comment here"
+
+# Sync with remote
+bd sync
 ```
-# 1. Get progress stats (passing/in_progress/total counts)
-feature_get_stats
 
-# 2. Get the NEXT feature to work on (one feature only)
-feature_get_next
-
-# 3. Mark a feature as in-progress (call immediately after feature_get_next)
-feature_mark_in_progress with feature_id={id}
-
-# 4. Mark a feature as passing (after lint/type-check succeeds)
-feature_mark_passing with feature_id={id}
-
-# 5. Skip a feature (moves to end of queue) - ONLY when blocked by dependency
-feature_skip with feature_id={id}
-
-# 6. Clear in-progress status (when abandoning a feature)
-feature_clear_in_progress with feature_id={id}
-```
-
-### RULES:
-
-- Do NOT try to fetch lists of all features
-- Do NOT query features by category
-- Do NOT list all pending features
-
-**You do NOT need to see all features.** The feature_get_next tool tells you exactly what to work on. Trust it.
+**You do NOT need to see all features.** The `bd ready` command tells you exactly what to work on. Trust it.
 
 ---
 

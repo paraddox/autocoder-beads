@@ -29,12 +29,9 @@ logger = logging.getLogger(__name__)
 # Root directory of the project
 ROOT_DIR = Path(__file__).parent.parent.parent
 
-# Read-only feature MCP tools (no mark_passing, skip, create_bulk)
-READONLY_FEATURE_MCP_TOOLS = [
-    "mcp__features__feature_get_stats",
-    "mcp__features__feature_get_next",
-    "mcp__features__feature_get_for_regression",
-]
+# Note: Feature information is now managed through beads (.beads/ directory)
+# The assistant can read feature status from .beads/ files directly
+READONLY_FEATURE_MCP_TOOLS = []  # No MCP feature tools needed - use beads CLI
 
 # Read-only built-in tools (no Write, Edit, Bash)
 READONLY_BUILTIN_TOOLS = [
@@ -83,9 +80,11 @@ You have access to these read-only tools:
 - **Glob**: Find files by pattern (e.g., "**/*.tsx")
 - **Grep**: Search file contents with regex
 - **WebFetch/WebSearch**: Look up documentation online
-- **feature_get_stats**: Get feature completion progress
-- **feature_get_next**: See the next pending feature
-- **feature_get_for_regression**: See passing features
+
+## Feature Tracking
+
+Features are tracked in the `.beads/` directory using beads issue tracking.
+You can read the feature files in `.beads/issues/` to see feature status and details.
 
 ## Guidelines
 

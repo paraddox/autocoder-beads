@@ -155,6 +155,19 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
     if copied_files:
         print(f"  Created prompt files: {', '.join(copied_files)}")
 
+    # Copy CLAUDE.md template to project root (for beads workflow instructions)
+    claude_template = TEMPLATES_DIR / "project_claude.md.template"
+    claude_dest = project_dir / "CLAUDE.md"
+    if claude_template.exists() and not claude_dest.exists():
+        try:
+            # Read template and substitute project name
+            content = claude_template.read_text(encoding="utf-8")
+            content = content.replace("{project_name}", project_dir.name)
+            claude_dest.write_text(content, encoding="utf-8")
+            print(f"  Created CLAUDE.md with beads workflow instructions")
+        except (OSError, PermissionError) as e:
+            print(f"  Warning: Could not create CLAUDE.md: {e}")
+
     return project_prompts
 
 

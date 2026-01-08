@@ -15,26 +15,22 @@ pwd
 ls -la
 
 # 3. Read the project specification to understand what you're building
-cat app_spec.txt
+cat prompts/app_spec.txt
 
 # 4. Read progress notes from previous sessions
 cat claude-progress.txt
 
 # 5. Check recent git history
 git log --oneline -20
-```
 
-Then use MCP tools to check feature status:
-
-```
-# 6. Get progress statistics (passing/total counts)
-Use the feature_get_stats tool
+# 6. Get progress statistics
+bd stats
 
 # 7. Get the next feature to work on
-Use the feature_get_next tool
+bd ready
 ```
 
-Understanding the `app_spec.txt` is critical - it contains the full requirements
+Understanding the `prompts/app_spec.txt` is critical - it contains the full requirements
 for the application you're building.
 
 ### STEP 2: START SERVERS (IF NOT RUNNING)
@@ -55,19 +51,19 @@ Otherwise, start servers manually and document the process.
 The previous session may have introduced bugs. Before implementing anything
 new, you MUST run verification tests.
 
-Run 1-2 of the features marked as passing that are most core to the app's functionality to verify they still work.
+Run 1-2 of the features marked as closed that are most core to the app's functionality to verify they still work.
 
-To get passing features for regression testing:
+To see completed features:
 
-```
-Use the feature_get_for_regression tool (returns up to 3 random passing features)
+```bash
+bd list --status=closed
 ```
 
 For example, if this were a chat app, you should perform a test that logs into the app, sends a message, and gets a response.
 
 **If you find ANY issues (functional or visual):**
 
-- Mark that feature as "passes": false immediately
+- Reopen that feature immediately: `bd reopen <id>`
 - Add issues to a list
 - Fix all issues BEFORE moving to new features
 - This includes UI bugs like:
@@ -96,16 +92,16 @@ Features are **test cases** that drive development. This is test-driven developm
 
 Get the next feature to implement:
 
-```
+```bash
 # Get the highest-priority pending feature
-Use the feature_get_next tool
+bd ready
 ```
 
-Once you've retrieved the feature, **immediately mark it as in-progress**:
+Once you've chosen a feature, **immediately mark it as in-progress**:
 
-```
+```bash
 # Mark feature as in-progress to prevent other sessions from working on it
-Use the feature_mark_in_progress tool with feature_id=42
+bd update <feature-id> --status=in_progress
 ```
 
 Focus on completing one feature perfectly and completing its testing steps in this session before moving on to other features.
@@ -134,8 +130,9 @@ If a feature requires building other functionality first, **build that functiona
 
 If you must skip (truly external blocker only):
 
-```
-Use the feature_skip tool with feature_id={id}
+```bash
+bd update <feature-id> --status=blocked
+bd comments <feature-id> add "Blocked: <reason>"
 ```
 
 Document the SPECIFIC external blocker in `claude-progress.txt`. "Functionality not built" is NEVER a valid reason.
@@ -174,9 +171,9 @@ Use browser automation tools:
 - Skip visual verification
 - Mark tests passing without thorough verification
 
-### STEP 6.5: MANDATORY VERIFICATION CHECKLIST (BEFORE MARKING ANY TEST PASSING)
+### STEP 6.5: MANDATORY VERIFICATION CHECKLIST (BEFORE MARKING ANY FEATURE COMPLETE)
 
-**You MUST complete ALL of these checks before marking any feature as "passes": true**
+**You MUST complete ALL of these checks before marking any feature as complete**
 
 #### Security Verification (for protected features)
 
@@ -211,7 +208,7 @@ Use browser automation tools:
 
 ### STEP 6.6: MOCK DATA DETECTION SWEEP
 
-**Run this sweep AFTER EVERY FEATURE before marking it as passing:**
+**Run this sweep AFTER EVERY FEATURE before marking it as complete:**
 
 #### 1. Code Pattern Search
 
@@ -254,13 +251,11 @@ For API endpoints used by this feature:
 
 ### STEP 7: UPDATE FEATURE STATUS (CAREFULLY!)
 
-**YOU CAN ONLY MODIFY ONE FIELD: "passes"**
+After thorough verification, mark the feature as complete:
 
-After thorough verification, mark the feature as passing:
-
-```
-# Mark feature #42 as passing (replace 42 with the actual feature ID)
-Use the feature_mark_passing tool with feature_id=42
+```bash
+# Mark feature as complete (replace <id> with the actual feature ID)
+bd close <feature-id>
 ```
 
 **NEVER:**
@@ -271,7 +266,7 @@ Use the feature_mark_passing tool with feature_id=42
 - Combine or consolidate features
 - Reorder features
 
-**ONLY MARK A FEATURE AS PASSING AFTER VERIFICATION WITH SCREENSHOTS.**
+**ONLY MARK A FEATURE AS COMPLETE AFTER VERIFICATION WITH SCREENSHOTS.**
 
 ### STEP 8: COMMIT YOUR PROGRESS
 
@@ -283,7 +278,7 @@ git commit -m "Implement [feature name] - verified end-to-end
 
 - Added [specific changes]
 - Tested with browser automation
-- Marked feature #X as passing
+- Marked feature #X as complete
 - Screenshots in verification/ directory
 "
 ```
@@ -293,10 +288,16 @@ git commit -m "Implement [feature name] - verified end-to-end
 Update `claude-progress.txt` with:
 
 - What you accomplished this session
-- Which test(s) you completed
+- Which feature(s) you completed
 - Any issues discovered or fixed
 - What should be worked on next
-- Current completion status (e.g., "45/200 tests passing")
+- Current completion status (e.g., "45/200 features complete")
+
+Then sync beads:
+
+```bash
+bd sync
+```
 
 ### STEP 10: END SESSION CLEANLY
 
@@ -304,7 +305,7 @@ Before context fills up:
 
 1. Commit all working code
 2. Update claude-progress.txt
-3. Mark features as passing if tests verified
+3. Sync beads: `bd sync`
 4. Ensure no uncommitted changes
 5. Leave app in working state (no broken features)
 
@@ -358,42 +359,41 @@ Test like a human user with mouse and keyboard. Don't take shortcuts by using Ja
 
 ---
 
-## FEATURE TOOL USAGE RULES (CRITICAL - DO NOT VIOLATE)
+## BEADS COMMAND REFERENCE
 
-The feature tools exist to reduce token usage. **DO NOT make exploratory queries.**
+```bash
+# Get progress stats
+bd stats
 
-### ALLOWED Feature Tools (ONLY these):
+# Get features ready to work on (no blockers)
+bd ready
 
+# List all open features
+bd list --status=open
+
+# List features in progress
+bd list --status=in_progress
+
+# View feature details
+bd show <feature-id>
+
+# Claim a feature
+bd update <feature-id> --status=in_progress
+
+# Mark feature as complete
+bd close <feature-id>
+
+# Mark feature as blocked
+bd update <feature-id> --status=blocked
+
+# Add a comment to a feature
+bd comments <feature-id> add "Your comment here"
+
+# Sync with remote
+bd sync
 ```
-# 1. Get progress stats (passing/in_progress/total counts)
-feature_get_stats
 
-# 2. Get the NEXT feature to work on (one feature only)
-feature_get_next
-
-# 3. Mark a feature as in-progress (call immediately after feature_get_next)
-feature_mark_in_progress with feature_id={id}
-
-# 4. Get up to 3 random passing features for regression testing
-feature_get_for_regression
-
-# 5. Mark a feature as passing (after verification)
-feature_mark_passing with feature_id={id}
-
-# 6. Skip a feature (moves to end of queue) - ONLY when blocked by dependency
-feature_skip with feature_id={id}
-
-# 7. Clear in-progress status (when abandoning a feature)
-feature_clear_in_progress with feature_id={id}
-```
-
-### RULES:
-
-- Do NOT try to fetch lists of all features
-- Do NOT query features by category
-- Do NOT list all pending features
-
-**You do NOT need to see all features.** The feature_get_next tool tells you exactly what to work on. Trust it.
+**You do NOT need to see all features.** The `bd ready` command tells you exactly what to work on. Trust it.
 
 ---
 
@@ -419,16 +419,16 @@ This allows you to fully test email-dependent flows without needing external ema
 
 ## IMPORTANT REMINDERS
 
-**Your Goal:** Production-quality application with all tests passing
+**Your Goal:** Production-quality application with all features complete
 
 **This Session's Goal:** Complete at least one feature perfectly
 
-**Priority:** Fix broken tests before implementing new features
+**Priority:** Fix broken features before implementing new features
 
 **Quality Bar:**
 
 - Zero console errors
-- Polished UI matching the design specified in app_spec.txt
+- Polished UI matching the design specified in prompts/app_spec.txt
 - All features work end-to-end through the UI
 - Fast, responsive, professional
 - **NO MOCK DATA - all data from real database**
