@@ -46,7 +46,8 @@ class BeadsClient:
         self,
         args: list[str],
         check: bool = True,
-        capture_output: bool = True
+        capture_output: bool = True,
+        use_db_flag: bool = True
     ) -> subprocess.CompletedProcess:
         """
         Execute a bd command in the project directory.
@@ -55,11 +56,15 @@ class BeadsClient:
             args: Command arguments (without 'bd' prefix)
             check: Raise on non-zero exit code
             capture_output: Capture stdout/stderr
+            use_db_flag: Whether to add --db flag (not needed for init)
 
         Returns:
             CompletedProcess with command results
         """
-        cmd = ["bd", "--db", str(self.beads_dir)] + args
+        if use_db_flag and self.beads_dir.exists():
+            cmd = ["bd", "--db", str(self.beads_dir / "beads.db")] + args
+        else:
+            cmd = ["bd"] + args
         return subprocess.run(
             cmd,
             cwd=self.project_dir,
@@ -167,6 +172,24 @@ class BeadsClient:
         """Check if beads is initialized in the project directory."""
         return self.beads_dir.exists() and (self.beads_dir / "config.yaml").exists()
 
+    def _ensure_git_repo(self) -> bool:
+        """Ensure the project directory is a git repository."""
+        git_dir = self.project_dir / ".git"
+        if git_dir.exists():
+            return True
+
+        try:
+            subprocess.run(
+                ["git", "init"],
+                cwd=self.project_dir,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
     def init(self) -> bool:
         """
         Initialize beads in the project directory.
@@ -177,13 +200,18 @@ class BeadsClient:
         if self.is_initialized():
             return True
 
+        # Beads requires a git repository
+        if not self._ensure_git_repo():
+            return False
+
         try:
+            # Don't use --db flag for init - let bd create the directory structure
             self._run_bd([
                 "init",
                 "--prefix", self.prefix,
                 "--quiet",
                 "--skip-hooks",
-            ], check=True)
+            ], check=True, use_db_flag=False)
             return True
         except subprocess.CalledProcessError:
             return False
@@ -205,10 +233,11 @@ class BeadsClient:
 
             stats = self._parse_json_output(result)
             if isinstance(stats, dict):
-                closed = stats.get("closed", 0)
-                in_progress = stats.get("in_progress", 0)
-                open_count = stats.get("open", 0)
-                total = closed + in_progress + open_count
+                # bd stats returns {"summary": {"total_issues": N, "closed_issues": M, ...}}
+                summary = stats.get("summary", stats)
+                closed = summary.get("closed_issues", 0)
+                in_progress = summary.get("in_progress_issues", 0)
+                total = summary.get("total_issues", 0)
                 percentage = round((closed / total) * 100, 1) if total > 0 else 0.0
 
                 return {
@@ -531,9 +560,12 @@ class BeadsClient:
             if result.returncode != 0:
                 return None
 
-            issue = self._parse_json_output(result)
-            if isinstance(issue, dict) and issue:
-                return self._issue_to_feature(issue)
+            output = self._parse_json_output(result)
+            # bd show returns an array with one element
+            if isinstance(output, list) and output:
+                return self._issue_to_feature(output[0])
+            elif isinstance(output, dict) and output:
+                return self._issue_to_feature(output)
 
             return None
 
