@@ -341,7 +341,7 @@ export function NewProjectModal({
               </div>
 
               {error && (
-                <div className="mb-4 p-3 bg-[var(--color-danger)] text-white text-sm rounded-md border border-[var(--color-border)]">
+                <div className="mb-4 p-3 bg-[var(--color-danger)] text-[var(--color-text-inverse)] text-sm rounded-md border border-[var(--color-border)]">
                   {error}
                 </div>
               )}
@@ -384,12 +384,12 @@ export function NewProjectModal({
                 >
                   <div className="flex items-start gap-4">
                     <div className="p-2 bg-[var(--color-accent)] rounded-md">
-                      <Bot size={24} className="text-white" />
+                      <Bot size={24} className="text-[var(--color-text-inverse)]" />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-lg text-[var(--color-text)]">Create with Claude</span>
-                        <span className="badge bg-[var(--color-success)] text-white text-xs">
+                        <span className="badge bg-[var(--color-done)] text-[var(--color-text-inverse)] text-xs">
                           Recommended
                         </span>
                       </div>
@@ -430,7 +430,7 @@ export function NewProjectModal({
               </div>
 
               {error && (
-                <div className="mt-4 p-3 bg-[var(--color-danger)] text-white text-sm rounded-md border border-[var(--color-border)]">
+                <div className="mt-4 p-3 bg-[var(--color-danger)] text-[var(--color-text-inverse)] text-sm rounded-md border border-[var(--color-border)]">
                   {error}
                 </div>
               )}
@@ -458,8 +458,8 @@ export function NewProjectModal({
           {/* Step 3: Complete */}
           {step === 'complete' && (
             <div className="text-center py-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-[var(--color-success)] rounded-full mb-4">
-                <CheckCircle2 size={32} className="text-white" />
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-[var(--color-done)] rounded-full mb-4">
+                <CheckCircle2 size={32} className="text-[var(--color-text-inverse)]" />
               </div>
               <h3 className="font-medium text-xl mb-2 text-[var(--color-text)]">
                 {projectName}

@@ -97,7 +97,7 @@ export function QuestionOptions({
         >
           {/* Question header */}
           <div className="flex items-center gap-3 mb-4">
-            <span className="badge bg-[var(--color-accent)] text-white">
+            <span className="badge bg-[var(--color-accent)] text-[var(--color-text-inverse)]">
               {q.header}
             </span>
             <span className="font-medium text-[var(--color-text)]">
@@ -143,7 +143,7 @@ export function QuestionOptions({
                         ${isSelected ? 'bg-[var(--color-done)] border-[var(--color-done)]' : 'bg-[var(--color-bg)]'}
                       `}
                     >
-                      {isSelected && <Check size={12} strokeWidth={2} className="text-white" />}
+                      {isSelected && <Check size={12} strokeWidth={2} className="text-[var(--color-text-inverse)]" />}
                     </div>
 
                     <div className="flex-1">
@@ -185,7 +185,7 @@ export function QuestionOptions({
                     ${showCustomInput[String(questionIdx)] ? 'bg-[var(--color-done)] border-[var(--color-done)]' : 'bg-[var(--color-bg)]'}
                   `}
                 >
-                  {showCustomInput[String(questionIdx)] && <Check size={12} strokeWidth={2} className="text-white" />}
+                  {showCustomInput[String(questionIdx)] && <Check size={12} strokeWidth={2} className="text-[var(--color-text-inverse)]" />}
                 </div>
 
                 <div className="flex-1">

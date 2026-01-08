@@ -131,7 +131,7 @@ export function AssistantChat({ projectName }: AssistantChatProps) {
       )}
 
       {/* Input area */}
-      <div className="border-t border-[var(--color-border)] p-4 bg-white">
+      <div className="border-t border-[var(--color-border)] p-4 bg-[var(--color-bg-elevated)]">
         <div className="flex gap-2">
           <textarea
             ref={inputRef}

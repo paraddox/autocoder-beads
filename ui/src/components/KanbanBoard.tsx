@@ -11,11 +11,11 @@ export function KanbanBoard({ features, onFeatureClick }: KanbanBoardProps) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {['Pending', 'In Progress', 'Done'].map(title => (
-          <div key={title} className="neo-card p-4">
-            <div className="h-8 bg-[var(--color-neo-bg)] animate-pulse mb-4" />
+          <div key={title} className="card p-4">
+            <div className="h-8 bg-[var(--color-bg-muted)] animate-pulse rounded mb-4" />
             <div className="space-y-3">
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-24 bg-[var(--color-neo-bg)] animate-pulse" />
+                <div key={i} className="h-24 bg-[var(--color-bg-muted)] animate-pulse rounded" />
               ))}
             </div>
           </div>

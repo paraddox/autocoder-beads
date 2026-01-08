@@ -33,7 +33,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
     },
     assistant: {
       icon: Bot,
-      bgColor: 'bg-white',
+      bgColor: 'bg-[var(--color-bg-elevated)]',
       borderColor: 'border-[var(--color-border)]',
       align: 'justify-start',
       bubbleAlign: 'items-start',
@@ -91,7 +91,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 flex-shrink-0
               `}
             >
-              <Icon size={16} className="text-white" />
+              <Icon size={16} className="text-[var(--color-text-inverse)]" />
             </div>
           )}
 
@@ -147,7 +147,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 {attachments.map((attachment) => (
                   <div
                     key={attachment.id}
-                    className="border border-[var(--color-border)] p-1 bg-white rounded-md shadow-sm"
+                    className="border border-[var(--color-border)] p-1 bg-[var(--color-bg-elevated)] rounded-md shadow-sm"
                   >
                     <img
                       src={attachment.previewUrl}

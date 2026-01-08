@@ -203,7 +203,7 @@ export function SpecCreationChat({
   return (
     <div className="flex flex-col h-full bg-[var(--color-bg)]">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] bg-white">
+      <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
         <div className="flex items-center gap-3">
           <h2 className="font-display font-medium text-lg text-[var(--color-text)]">
             Create Spec: {projectName}
@@ -241,12 +241,12 @@ export function SpecCreationChat({
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-2 p-3 bg-[var(--color-danger)] text-white border-b border-[var(--color-border)]">
+        <div className="flex items-center gap-2 p-3 bg-[var(--color-danger)] text-[var(--color-text-inverse)] border-b border-[var(--color-border)]">
           <AlertCircle size={16} />
           <span className="flex-1 text-sm">{error}</span>
           <button
             onClick={() => setError(null)}
-            className="p-1 hover:bg-white/20 rounded"
+            className="p-1 hover:bg-[var(--color-text-inverse)]/20 rounded"
           >
             <X size={14} />
           </button>
@@ -300,7 +300,7 @@ export function SpecCreationChat({
       {/* Input area */}
       {!isComplete && (
         <div
-          className="p-4 border-t border-[var(--color-border)] bg-white"
+          className="p-4 border-t border-[var(--color-border)] bg-[var(--color-bg-elevated)]"
           onDrop={handleDrop}
           onDragOver={handleDragOver}
         >
@@ -310,7 +310,7 @@ export function SpecCreationChat({
               {pendingAttachments.map((attachment) => (
                 <div
                   key={attachment.id}
-                  className="relative group border border-[var(--color-border)] p-1 bg-white rounded-md shadow-sm"
+                  className="relative group border border-[var(--color-border)] p-1 bg-[var(--color-bg)] rounded-md shadow-sm"
                 >
                   <img
                     src={attachment.previewUrl}
@@ -319,7 +319,7 @@ export function SpecCreationChat({
                   />
                   <button
                     onClick={() => handleRemoveAttachment(attachment.id)}
-                    className="absolute -top-2 -right-2 bg-[var(--color-danger)] text-white rounded-full p-0.5 border border-[var(--color-border)] hover:scale-110 transition-transform"
+                    className="absolute -top-2 -right-2 bg-[var(--color-danger)] text-[var(--color-text-inverse)] rounded-full p-0.5 border border-[var(--color-border)] hover:scale-110 transition-transform"
                     title="Remove attachment"
                   >
                     <X size={12} />
@@ -407,8 +407,8 @@ export function SpecCreationChat({
                 </>
               ) : initializerStatus === 'error' ? (
                 <>
-                  <AlertCircle size={20} className="text-white" />
-                  <span className="font-medium text-white">
+                  <AlertCircle size={20} className="text-[var(--color-text-inverse)]" />
+                  <span className="font-medium text-[var(--color-text-inverse)]">
                     {initializerError || 'Failed to start agent'}
                   </span>
                 </>
@@ -423,7 +423,7 @@ export function SpecCreationChat({
               {initializerStatus === 'error' && onRetryInitializer && (
                 <button
                   onClick={onRetryInitializer}
-                  className="btn bg-white"
+                  className="btn bg-[var(--color-bg-elevated)] text-[var(--color-text)]"
                 >
                   <RotateCcw size={14} />
                   Retry
@@ -435,7 +435,7 @@ export function SpecCreationChat({
                   <button
                     onClick={() => setYoloEnabled(!yoloEnabled)}
                     className={`btn text-sm py-2 px-3 ${
-                      yoloEnabled ? 'btn-warning' : 'bg-white'
+                      yoloEnabled ? 'btn-warning' : 'bg-[var(--color-bg-elevated)] text-[var(--color-text)]'
                     }`}
                     title="YOLO Mode: Skip testing for rapid prototyping"
                   >

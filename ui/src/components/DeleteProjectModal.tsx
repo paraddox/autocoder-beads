@@ -115,7 +115,7 @@ export function DeleteProjectModal({
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-[var(--color-danger)] text-white text-sm rounded-md">
+            <div className="mb-4 p-3 bg-[var(--color-danger)] text-[var(--color-text-inverse)] text-sm rounded-md">
               {error}
             </div>
           )}

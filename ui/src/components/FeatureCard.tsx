@@ -7,28 +7,20 @@ interface FeatureCardProps {
   isInProgress?: boolean
 }
 
-// Generate consistent muted color for category
-function getCategoryStyle(category: string): { bg: string; text: string; border: string } {
-  const palettes = [
-    { bg: '#FDF4F2', text: '#B35A43', border: '#F5D4CC' }, // coral
-    { bg: '#EEF4FA', text: '#3D6A8F', border: '#B8D4ED' }, // blue
-    { bg: '#EEF7F0', text: '#4A7D55', border: '#B4DCC0' }, // green
-    { bg: '#FEF9EC', text: '#9A7B2E', border: '#F5DFA0' }, // amber
-    { bg: '#F5F3FF', text: '#6B5B95', border: '#D4CCE8' }, // purple
-    { bg: '#FFF5F5', text: '#A66060', border: '#F0C8C8' }, // rose
-    { bg: '#F0F9FF', text: '#4A7B8A', border: '#B8DCE8' }, // teal
-  ]
+// Category color palette names (maps to CSS variables)
+const CATEGORY_PALETTES = ['coral', 'blue', 'green', 'amber', 'purple', 'rose', 'teal'] as const
 
+// Generate consistent category palette name based on category string
+function getCategoryPalette(category: string): typeof CATEGORY_PALETTES[number] {
   let hash = 0
   for (let i = 0; i < category.length; i++) {
     hash = category.charCodeAt(i) + ((hash << 5) - hash)
   }
-
-  return palettes[Math.abs(hash) % palettes.length]
+  return CATEGORY_PALETTES[Math.abs(hash) % CATEGORY_PALETTES.length]
 }
 
 export function FeatureCard({ feature, onClick, isInProgress }: FeatureCardProps) {
-  const categoryStyle = getCategoryStyle(feature.category)
+  const palette = getCategoryPalette(feature.category)
 
   return (
     <button
@@ -44,9 +36,9 @@ export function FeatureCard({ feature, onClick, isInProgress }: FeatureCardProps
         <span
           className="badge text-xs"
           style={{
-            backgroundColor: categoryStyle.bg,
-            color: categoryStyle.text,
-            border: `1px solid ${categoryStyle.border}`,
+            backgroundColor: `var(--color-cat-${palette}-bg)`,
+            color: `var(--color-cat-${palette}-text)`,
+            border: `1px solid var(--color-cat-${palette}-border)`,
           }}
         >
           {feature.category}

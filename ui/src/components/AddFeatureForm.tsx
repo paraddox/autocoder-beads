@@ -87,7 +87,7 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Error Message */}
           {error && (
-            <div className="flex items-center gap-3 p-4 bg-[var(--color-danger)] text-white border border-[var(--color-border)] rounded-md">
+            <div className="flex items-center gap-3 p-4 bg-[var(--color-danger)] text-[var(--color-text-inverse)] border border-[var(--color-border)] rounded-md">
               <AlertCircle size={20} />
               <span>{error}</span>
               <button

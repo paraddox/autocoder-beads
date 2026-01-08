@@ -17,7 +17,7 @@ export function AssistantFAB({ onClick, isOpen }: AssistantFABProps) {
         fixed bottom-6 right-6 z-50
         w-14 h-14
         flex items-center justify-center
-        bg-[var(--color-accent)] text-white
+        bg-[var(--color-accent)] text-[var(--color-text-inverse)]
         border border-[var(--color-border)]
         rounded-lg
         shadow-md

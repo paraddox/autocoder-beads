@@ -139,7 +139,7 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
   return (
     <div className="flex flex-col h-full max-h-[70vh]">
       {/* Header with breadcrumb navigation */}
-      <div className="flex-shrink-0 p-4 border-b border-[var(--color-border)] bg-white">
+      <div className="flex-shrink-0 p-4 border-b border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
         <div className="flex items-center gap-2 mb-3">
           <Folder size={20} className="text-[var(--color-accent)]" />
           <span className="font-medium text-[var(--color-text)]">Select Project Folder</span>
@@ -187,7 +187,7 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
                 className={`
                   btn btn-ghost py-1 px-2 text-sm
                   flex items-center gap-1
-                  ${currentPath?.startsWith(drive.letter) ? 'bg-[var(--color-accent)] text-white' : ''}
+                  ${currentPath?.startsWith(drive.letter) ? 'bg-[var(--color-accent)] text-[var(--color-text-inverse)]' : ''}
                 `}
               >
                 <HardDrive size={14} />
@@ -199,7 +199,7 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
       )}
 
       {/* Directory listing */}
-      <div className="flex-1 overflow-y-auto p-2 bg-white">
+      <div className="flex-1 overflow-y-auto p-2 bg-[var(--color-bg-elevated)]">
         {isLoading ? (
           <div className="flex items-center justify-center p-8">
             <Loader2 size={24} className="animate-spin text-[var(--color-accent)]" />
@@ -299,7 +299,7 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
       </div>
 
       {/* Footer with selected path and actions */}
-      <div className="flex-shrink-0 p-4 border-t border-[var(--color-border)] bg-white">
+      <div className="flex-shrink-0 p-4 border-t border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
         {/* Selected path display */}
         <div className="mb-3 p-2 bg-[var(--color-bg)] rounded border border-[var(--color-border)]">
           <div className="text-xs text-[var(--color-text-secondary)] mb-1">Selected path:</div>

@@ -45,7 +45,7 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-[var(--color-border)]">
           <div>
-            <span className="badge bg-[var(--color-accent)] text-white mb-2">
+            <span className="badge bg-[var(--color-accent)] text-[var(--color-text-inverse)] mb-2">
               {feature.category}
             </span>
             <h2 className="font-display text-2xl font-medium">
@@ -64,7 +64,7 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
         <div className="p-6 space-y-6">
           {/* Error Message */}
           {error && (
-            <div className="flex items-center gap-3 p-4 bg-[var(--color-danger)] text-white border border-[var(--color-border)] rounded-lg">
+            <div className="flex items-center gap-3 p-4 bg-[var(--color-danger)] text-[var(--color-text-inverse)] border border-[var(--color-border)] rounded-lg">
               <AlertCircle size={20} />
               <span>{error}</span>
               <button

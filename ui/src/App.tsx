@@ -3,6 +3,7 @@ import { useProjects, useFeatures, useAgentStatus } from './hooks/useProjects'
 import { useProjectWebSocket } from './hooks/useWebSocket'
 import { useFeatureSound } from './hooks/useFeatureSound'
 import { useCelebration } from './hooks/useCelebration'
+import { useTheme } from './hooks/useTheme'
 
 const STORAGE_KEY = 'autocoder-selected-project'
 import { ProjectSelector } from './components/ProjectSelector'
@@ -19,7 +20,7 @@ import { AssistantPanel } from './components/AssistantPanel'
 import { IncompleteProjectModal } from './components/IncompleteProjectModal'
 import { NewProjectModal } from './components/NewProjectModal'
 import { DeleteProjectModal } from './components/DeleteProjectModal'
-import { Plus, Loader2, Trash2 } from 'lucide-react'
+import { Plus, Loader2, Trash2, Sun, Moon } from 'lucide-react'
 import type { Feature, ProjectSummary, WizardStatus } from './lib/types'
 
 function App() {
@@ -53,6 +54,7 @@ function App() {
   const { data: features } = useFeatures(selectedProject)
   const { data: agentStatusData } = useAgentStatus(selectedProject)
   const wsState = useProjectWebSocket(selectedProject)
+  const { theme, toggleTheme } = useTheme()
 
   // Play sounds when features move between columns
   useFeatureSound(features)
@@ -186,9 +188,22 @@ function App() {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             {/* Logo and Title */}
-            <h1 className="font-display text-xl font-medium tracking-tight text-[var(--color-text)]">
-              AutoCoder
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="font-display text-xl font-medium tracking-tight text-[var(--color-text)]">
+                AutoCoder
+              </h1>
+              <button
+                onClick={toggleTheme}
+                className="btn btn-ghost p-2"
+                title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+              >
+                {theme === 'dark' ? (
+                  <Sun size={18} className="text-[var(--color-text-secondary)]" />
+                ) : (
+                  <Moon size={18} className="text-[var(--color-text-secondary)]" />
+                )}
+              </button>
+            </div>
 
             {/* Controls */}
             <div className="flex items-center gap-3">

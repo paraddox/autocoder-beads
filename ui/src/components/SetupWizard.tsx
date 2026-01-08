@@ -108,7 +108,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
         {/* Error Message */}
         {(healthError || setupError) && (
-          <div className="mt-6 p-4 bg-[var(--color-danger)] text-white border border-[var(--color-border)] rounded-lg">
+          <div className="mt-6 p-4 bg-[var(--color-danger)] text-[var(--color-text-inverse)] border border-[var(--color-border)] rounded-lg">
             <p className="font-medium mb-2">Setup Error</p>
             <p className="text-sm">
               {healthError
