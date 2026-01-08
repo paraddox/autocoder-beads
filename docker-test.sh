@@ -25,7 +25,7 @@ NC='\033[0m' # No Color
 # Test configuration
 TEST_PROJECT_ALPHA="docker-test-alpha-$$"
 TEST_PROJECT_BETA="docker-test-beta-$$"
-TEST_DIR="/tmp/autocoder-docker-test-$$"
+TEST_DIR="$HOME/autocoder-docker-test-$$"
 SERVER_PORT=8765
 SERVER_PID=""
 
