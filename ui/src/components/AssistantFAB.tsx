@@ -17,13 +17,13 @@ export function AssistantFAB({ onClick, isOpen }: AssistantFABProps) {
         fixed bottom-6 right-6 z-50
         w-14 h-14
         flex items-center justify-center
-        bg-[var(--color-neo-progress)] text-white
-        border-3 border-[var(--color-neo-border)]
-        rounded-full
-        shadow-neo-md
+        bg-[var(--color-accent)] text-white
+        border border-[var(--color-border)]
+        rounded-lg
+        shadow-md
         transition-all duration-200
-        hover:shadow-neo-lg hover:-translate-y-0.5
-        active:shadow-neo-sm active:translate-y-0.5
+        hover:shadow-lg hover:-translate-y-0.5
+        active:shadow-sm active:translate-y-0.5
         ${isOpen ? 'rotate-0' : ''}
       `}
       title={isOpen ? 'Close Assistant (Press A)' : 'Open Assistant (Press A)'}

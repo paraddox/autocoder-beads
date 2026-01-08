@@ -108,25 +108,26 @@ export function AgentThought({ logs, agentStatus }: AgentThoughtProps) {
       <div
         className={`
           relative
-          bg-[var(--color-neo-card)]
-          border-3 border-[var(--color-neo-border)]
-          shadow-[var(--shadow-neo-sm)]
+          bg-[var(--color-bg-elevated)]
+          border border-[var(--color-border)]
+          rounded-lg
+          shadow-sm
           px-4 py-3
           flex items-center gap-3
-          ${isRunning ? 'animate-pulse-neo' : ''}
+          ${isRunning ? 'animate-pulse-soft' : ''}
         `}
       >
         {/* Brain Icon with subtle glow */}
         <div className="relative shrink-0">
           <Brain
-            size={22}
-            className="text-[var(--color-neo-progress)]"
-            strokeWidth={2.5}
+            size={20}
+            className="text-[var(--color-progress)]"
+            strokeWidth={2}
           />
           {isRunning && (
             <Sparkles
               size={10}
-              className="absolute -top-1 -right-1 text-[var(--color-neo-pending)] animate-pulse"
+              className="absolute -top-1 -right-1 text-[var(--color-pending)] animate-pulse"
             />
           )}
         </div>
@@ -135,7 +136,7 @@ export function AgentThought({ logs, agentStatus }: AgentThoughtProps) {
         <p
           className={`
             font-mono text-sm truncate transition-all duration-150 ease-out
-            ${isRunning ? 'animate-shimmer' : 'text-[var(--color-neo-text)]'}
+            ${isRunning ? 'animate-shimmer' : 'text-[var(--color-text-secondary)]'}
           `}
           style={{
             opacity: textVisible ? 1 : 0,
@@ -147,12 +148,7 @@ export function AgentThought({ logs, agentStatus }: AgentThoughtProps) {
 
         {/* Subtle running indicator bar */}
         {isRunning && (
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-neo-progress)] opacity-50">
-            <div
-              className="h-full bg-[var(--color-neo-progress)] animate-pulse"
-              style={{ width: '100%' }}
-            />
-          </div>
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-progress)] opacity-30 rounded-b-lg" />
         )}
       </div>
     </div>

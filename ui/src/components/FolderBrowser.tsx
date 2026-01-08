@@ -139,10 +139,10 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
   return (
     <div className="flex flex-col h-full max-h-[70vh]">
       {/* Header with breadcrumb navigation */}
-      <div className="flex-shrink-0 p-4 border-b-3 border-[var(--color-neo-border)] bg-white">
+      <div className="flex-shrink-0 p-4 border-b border-[var(--color-border)] bg-white">
         <div className="flex items-center gap-2 mb-3">
-          <Folder size={20} className="text-[var(--color-neo-progress)]" />
-          <span className="font-bold text-[#1a1a1a]">Select Project Folder</span>
+          <Folder size={20} className="text-[var(--color-accent)]" />
+          <span className="font-medium text-[var(--color-text)]">Select Project Folder</span>
         </div>
 
         {/* Breadcrumb navigation */}
@@ -150,7 +150,7 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
           {directoryData?.parent_path && (
             <button
               onClick={handleNavigateUp}
-              className="neo-btn neo-btn-ghost p-1"
+              className="btn btn-ghost p-1"
               title="Go up"
             >
               <ArrowLeft size={16} />
@@ -159,13 +159,13 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
 
           {breadcrumbs.map((crumb, index) => (
             <div key={crumb.path} className="flex items-center">
-              {index > 0 && <ChevronRight size={14} className="text-gray-400 mx-1" />}
+              {index > 0 && <ChevronRight size={14} className="text-[var(--color-text-secondary)] mx-1" />}
               <button
                 onClick={() => handleNavigate(crumb.path)}
                 className={`
-                  px-2 py-1 rounded text-[#1a1a1a]
-                  hover:bg-[var(--color-neo-bg)]
-                  ${index === breadcrumbs.length - 1 ? 'font-bold' : ''}
+                  px-2 py-1 rounded text-[var(--color-text)]
+                  hover:bg-[var(--color-bg)]
+                  ${index === breadcrumbs.length - 1 ? 'font-medium' : ''}
                 `}
               >
                 {crumb.name}
@@ -177,17 +177,17 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
 
       {/* Drive selector (Windows only) */}
       {directoryData?.drives && directoryData.drives.length > 0 && (
-        <div className="flex-shrink-0 p-3 border-b-3 border-[var(--color-neo-border)] bg-[var(--color-neo-bg)]">
+        <div className="flex-shrink-0 p-3 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-[var(--color-neo-text-secondary)]">Drives:</span>
+            <span className="text-sm font-medium text-[var(--color-text-secondary)]">Drives:</span>
             {directoryData.drives.map((drive) => (
               <button
                 key={drive.letter}
                 onClick={() => handleDriveSelect(drive)}
                 className={`
-                  neo-btn neo-btn-ghost py-1 px-2 text-sm
+                  btn btn-ghost py-1 px-2 text-sm
                   flex items-center gap-1
-                  ${currentPath?.startsWith(drive.letter) ? 'bg-[var(--color-neo-progress)] text-white' : ''}
+                  ${currentPath?.startsWith(drive.letter) ? 'bg-[var(--color-accent)] text-white' : ''}
                 `}
               >
                 <HardDrive size={14} />
@@ -202,15 +202,15 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
       <div className="flex-1 overflow-y-auto p-2 bg-white">
         {isLoading ? (
           <div className="flex items-center justify-center p-8">
-            <Loader2 size={24} className="animate-spin text-[var(--color-neo-progress)]" />
+            <Loader2 size={24} className="animate-spin text-[var(--color-accent)]" />
           </div>
         ) : error ? (
           <div className="p-4 text-center">
-            <AlertCircle size={32} className="mx-auto mb-2 text-[var(--color-neo-danger)]" />
-            <p className="text-[var(--color-neo-danger)]">
+            <AlertCircle size={32} className="mx-auto mb-2 text-[var(--color-danger)]" />
+            <p className="text-[var(--color-danger)]">
               {error instanceof Error ? error.message : 'Failed to load directory'}
             </p>
-            <button onClick={() => refetch()} className="neo-btn neo-btn-ghost mt-2">
+            <button onClick={() => refetch()} className="btn btn-ghost mt-2">
               Retry
             </button>
           </div>
@@ -227,27 +227,27 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
                   className={`
                     w-full text-left p-2 rounded
                     flex items-center gap-2
-                    hover:bg-[var(--color-neo-bg)]
-                    border-2 border-transparent
-                    text-[var(--color-neo-text)]
-                    ${selectedPath === entry.path ? 'bg-[var(--color-neo-progress)] bg-opacity-10 border-[var(--color-neo-progress)]' : ''}
+                    hover:bg-[var(--color-bg)]
+                    border border-transparent
+                    text-[var(--color-text)]
+                    ${selectedPath === entry.path ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)]' : ''}
                   `}
                 >
                   {selectedPath === entry.path ? (
-                    <FolderOpen size={18} className="text-[var(--color-neo-progress)] flex-shrink-0" />
+                    <FolderOpen size={18} className="text-[var(--color-accent)] flex-shrink-0" />
                   ) : (
-                    <Folder size={18} className="text-[var(--color-neo-pending)] flex-shrink-0" />
+                    <Folder size={18} className="text-[var(--color-warning)] flex-shrink-0" />
                   )}
-                  <span className="truncate flex-1 text-[#1a1a1a]">{entry.name}</span>
+                  <span className="truncate flex-1 text-[var(--color-text)]">{entry.name}</span>
                   {entry.has_children && (
-                    <ChevronRight size={14} className="ml-auto text-gray-400 flex-shrink-0" />
+                    <ChevronRight size={14} className="ml-auto text-[var(--color-text-secondary)] flex-shrink-0" />
                   )}
                 </button>
               ))}
 
             {/* Empty state */}
             {directoryData?.entries.filter((e) => e.is_directory).length === 0 && (
-              <div className="p-4 text-center text-[var(--color-neo-text-secondary)]">
+              <div className="p-4 text-center text-[var(--color-text-secondary)]">
                 <Folder size={32} className="mx-auto mb-2 opacity-50" />
                 <p>No subfolders</p>
                 <p className="text-sm">You can create a new folder or select this directory.</p>
@@ -258,15 +258,15 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
 
         {/* New folder creation */}
         {isCreatingFolder && (
-          <div className="mt-2 p-3 bg-[var(--color-neo-bg)] border-2 border-[var(--color-neo-border)] rounded">
+          <div className="mt-2 p-3 bg-[var(--color-bg)] border border-[var(--color-border)] rounded">
             <div className="flex items-center gap-2">
-              <FolderPlus size={18} className="text-[var(--color-neo-progress)]" />
+              <FolderPlus size={18} className="text-[var(--color-accent)]" />
               <input
                 type="text"
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
                 placeholder="New folder name"
-                className="neo-input flex-1 py-1"
+                className="input flex-1 py-1"
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleCreateFolder()
@@ -277,7 +277,7 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
                   }
                 }}
               />
-              <button onClick={handleCreateFolder} className="neo-btn neo-btn-primary py-1 px-3">
+              <button onClick={handleCreateFolder} className="btn btn-primary py-1 px-3">
                 Create
               </button>
               <button
@@ -286,31 +286,31 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
                   setNewFolderName('')
                   setCreateError(null)
                 }}
-                className="neo-btn neo-btn-ghost py-1 px-2"
+                className="btn btn-ghost py-1 px-2"
               >
                 Cancel
               </button>
             </div>
             {createError && (
-              <p className="text-sm text-[var(--color-neo-danger)] mt-1">{createError}</p>
+              <p className="text-sm text-[var(--color-danger)] mt-1">{createError}</p>
             )}
           </div>
         )}
       </div>
 
       {/* Footer with selected path and actions */}
-      <div className="flex-shrink-0 p-4 border-t-3 border-[var(--color-neo-border)] bg-white">
+      <div className="flex-shrink-0 p-4 border-t border-[var(--color-border)] bg-white">
         {/* Selected path display */}
-        <div className="mb-3 p-2 bg-[var(--color-neo-bg)] rounded border-2 border-[var(--color-neo-border)]">
-          <div className="text-xs text-[#4a4a4a] mb-1">Selected path:</div>
-          <div className="font-mono text-sm truncate text-[#1a1a1a]">{selectedPath || 'No folder selected'}</div>
+        <div className="mb-3 p-2 bg-[var(--color-bg)] rounded border border-[var(--color-border)]">
+          <div className="text-xs text-[var(--color-text-secondary)] mb-1">Selected path:</div>
+          <div className="font-mono text-sm truncate text-[var(--color-text)]">{selectedPath || 'No folder selected'}</div>
         </div>
 
         {/* Actions */}
         <div className="flex items-center justify-between">
           <button
             onClick={() => setIsCreatingFolder(true)}
-            className="neo-btn neo-btn-ghost"
+            className="btn btn-ghost"
             disabled={isCreatingFolder}
           >
             <FolderPlus size={16} />
@@ -318,12 +318,12 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
           </button>
 
           <div className="flex items-center gap-2">
-            <button onClick={onCancel} className="neo-btn neo-btn-ghost">
+            <button onClick={onCancel} className="btn btn-ghost">
               Cancel
             </button>
             <button
               onClick={handleSelect}
-              className="neo-btn neo-btn-primary"
+              className="btn btn-primary"
               disabled={!selectedPath}
             >
               Select This Folder

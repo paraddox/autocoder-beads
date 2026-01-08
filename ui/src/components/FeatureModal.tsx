@@ -37,24 +37,24 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
   }
 
   return (
-    <div className="neo-modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="neo-modal w-full max-w-2xl p-0"
+        className="modal w-full max-w-2xl p-0"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b-3 border-[var(--color-neo-border)]">
+        <div className="flex items-start justify-between p-6 border-b border-[var(--color-border)]">
           <div>
-            <span className="neo-badge bg-[var(--color-neo-accent)] text-white mb-2">
+            <span className="badge bg-[var(--color-accent)] text-white mb-2">
               {feature.category}
             </span>
-            <h2 className="font-display text-2xl font-bold">
+            <h2 className="font-display text-2xl font-medium">
               {feature.name}
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="neo-btn neo-btn-ghost p-2"
+            className="btn btn-ghost p-2"
           >
             <X size={24} />
           </button>
@@ -64,7 +64,7 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
         <div className="p-6 space-y-6">
           {/* Error Message */}
           {error && (
-            <div className="flex items-center gap-3 p-4 bg-[var(--color-neo-danger)] text-white border-3 border-[var(--color-neo-border)]">
+            <div className="flex items-center gap-3 p-4 bg-[var(--color-danger)] text-white border border-[var(--color-border)] rounded-lg">
               <AlertCircle size={20} />
               <span>{error}</span>
               <button
@@ -77,19 +77,19 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
           )}
 
           {/* Status */}
-          <div className="flex items-center gap-3 p-4 bg-[var(--color-neo-bg)] border-3 border-[var(--color-neo-border)]">
+          <div className="flex items-center gap-3 p-4 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg">
             {feature.passes ? (
               <>
-                <CheckCircle2 size={24} className="text-[var(--color-neo-done)]" />
-                <span className="font-display font-bold text-[var(--color-neo-done)]">
-                  COMPLETE
+                <CheckCircle2 size={24} className="text-[var(--color-done)]" />
+                <span className="font-display font-medium text-[var(--color-done)]">
+                  Complete
                 </span>
               </>
             ) : (
               <>
-                <Circle size={24} className="text-[var(--color-neo-text-secondary)]" />
-                <span className="font-display font-bold text-[var(--color-neo-text-secondary)]">
-                  PENDING
+                <Circle size={24} className="text-[var(--color-text-secondary)]" />
+                <span className="font-display font-medium text-[var(--color-text-secondary)]">
+                  Pending
                 </span>
               </>
             )}
@@ -100,10 +100,10 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
 
           {/* Description */}
           <div>
-            <h3 className="font-display font-bold mb-2 uppercase text-sm">
+            <h3 className="font-display font-medium mb-2 text-sm">
               Description
             </h3>
-            <p className="text-[var(--color-neo-text-secondary)]">
+            <p className="text-[var(--color-text-secondary)]">
               {feature.description}
             </p>
           </div>
@@ -111,14 +111,14 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
           {/* Steps */}
           {feature.steps.length > 0 && (
             <div>
-              <h3 className="font-display font-bold mb-2 uppercase text-sm">
+              <h3 className="font-display font-medium mb-2 text-sm">
                 Test Steps
               </h3>
               <ol className="list-decimal list-inside space-y-2">
                 {feature.steps.map((step, index) => (
                   <li
                     key={index}
-                    className="p-3 bg-[var(--color-neo-bg)] border-3 border-[var(--color-neo-border)]"
+                    className="p-3 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg"
                   >
                     {step}
                   </li>
@@ -130,17 +130,17 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
 
         {/* Actions */}
         {!feature.passes && (
-          <div className="p-6 border-t-3 border-[var(--color-neo-border)] bg-[var(--color-neo-bg)]">
+          <div className="p-6 border-t border-[var(--color-border)] bg-[var(--color-bg)]">
             {showDeleteConfirm ? (
               <div className="space-y-4">
-                <p className="font-bold text-center">
+                <p className="font-medium text-center">
                   Are you sure you want to delete this feature?
                 </p>
                 <div className="flex gap-3">
                   <button
                     onClick={handleDelete}
                     disabled={deleteFeature.isPending}
-                    className="neo-btn neo-btn-danger flex-1"
+                    className="btn btn-danger flex-1"
                   >
                     {deleteFeature.isPending ? (
                       <Loader2 size={18} className="animate-spin" />
@@ -151,7 +151,7 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                   <button
                     onClick={() => setShowDeleteConfirm(false)}
                     disabled={deleteFeature.isPending}
-                    className="neo-btn neo-btn-ghost flex-1"
+                    className="btn btn-ghost flex-1"
                   >
                     Cancel
                   </button>
@@ -162,7 +162,7 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                 <button
                   onClick={handleSkip}
                   disabled={skipFeature.isPending}
-                  className="neo-btn neo-btn-warning flex-1"
+                  className="btn btn-warning flex-1"
                 >
                   {skipFeature.isPending ? (
                     <Loader2 size={18} className="animate-spin" />
@@ -176,7 +176,7 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={skipFeature.isPending}
-                  className="neo-btn neo-btn-danger"
+                  className="btn btn-danger"
                 >
                   <Trash2 size={18} />
                 </button>

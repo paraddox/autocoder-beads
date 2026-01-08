@@ -74,29 +74,29 @@ export function AssistantChat({ projectName }: AssistantChatProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Connection status indicator */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b-2 border-[var(--color-neo-border)] bg-[var(--color-neo-bg)]">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
         {connectionStatus === 'connected' ? (
           <>
-            <Wifi size={14} className="text-[var(--color-neo-done)]" />
-            <span className="text-xs text-[var(--color-neo-text-secondary)]">Connected</span>
+            <Wifi size={14} className="text-[var(--color-done)]" />
+            <span className="text-xs text-[var(--color-text-secondary)]">Connected</span>
           </>
         ) : connectionStatus === 'connecting' ? (
           <>
-            <Loader2 size={14} className="text-[var(--color-neo-progress)] animate-spin" />
-            <span className="text-xs text-[var(--color-neo-text-secondary)]">Connecting...</span>
+            <Loader2 size={14} className="text-[var(--color-progress)] animate-spin" />
+            <span className="text-xs text-[var(--color-text-secondary)]">Connecting...</span>
           </>
         ) : (
           <>
-            <WifiOff size={14} className="text-[var(--color-neo-danger)]" />
-            <span className="text-xs text-[var(--color-neo-text-secondary)]">Disconnected</span>
+            <WifiOff size={14} className="text-[var(--color-danger)]" />
+            <span className="text-xs text-[var(--color-text-secondary)]">Disconnected</span>
           </>
         )}
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto bg-[var(--color-neo-bg)]">
+      <div className="flex-1 overflow-y-auto bg-[var(--color-bg)]">
         {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-[var(--color-neo-text-secondary)] text-sm">
+          <div className="flex items-center justify-center h-full text-[var(--color-text-secondary)] text-sm">
             {isLoading ? (
               <div className="flex items-center gap-2">
                 <Loader2 size={16} className="animate-spin" />
@@ -118,12 +118,12 @@ export function AssistantChat({ projectName }: AssistantChatProps) {
 
       {/* Loading indicator */}
       {isLoading && messages.length > 0 && (
-        <div className="px-4 py-2 border-t-2 border-[var(--color-neo-border)] bg-[var(--color-neo-bg)]">
-          <div className="flex items-center gap-2 text-[var(--color-neo-text-secondary)] text-sm">
+        <div className="px-4 py-2 border-t border-[var(--color-border)] bg-[var(--color-bg)]">
+          <div className="flex items-center gap-2 text-[var(--color-text-secondary)] text-sm">
             <div className="flex gap-1">
-              <span className="w-2 h-2 bg-[var(--color-neo-progress)] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-2 h-2 bg-[var(--color-neo-progress)] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-2 h-2 bg-[var(--color-neo-progress)] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <span className="w-2 h-2 bg-[var(--color-progress)] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-2 h-2 bg-[var(--color-progress)] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-2 h-2 bg-[var(--color-progress)] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
             <span>Thinking...</span>
           </div>
@@ -131,7 +131,7 @@ export function AssistantChat({ projectName }: AssistantChatProps) {
       )}
 
       {/* Input area */}
-      <div className="border-t-3 border-[var(--color-neo-border)] p-4 bg-white">
+      <div className="border-t border-[var(--color-border)] p-4 bg-white">
         <div className="flex gap-2">
           <textarea
             ref={inputRef}
@@ -142,7 +142,7 @@ export function AssistantChat({ projectName }: AssistantChatProps) {
             disabled={isLoading || connectionStatus !== 'connected'}
             className="
               flex-1
-              neo-input
+              input
               resize-none
               min-h-[44px]
               max-h-[120px]
@@ -154,7 +154,7 @@ export function AssistantChat({ projectName }: AssistantChatProps) {
             onClick={handleSend}
             disabled={!inputValue.trim() || isLoading || connectionStatus !== 'connected'}
             className="
-              neo-btn neo-btn-primary
+              btn btn-primary
               px-4
               disabled:opacity-50 disabled:cursor-not-allowed
             "
@@ -167,7 +167,7 @@ export function AssistantChat({ projectName }: AssistantChatProps) {
             )}
           </button>
         </div>
-        <p className="text-xs text-[var(--color-neo-text-secondary)] mt-2">
+        <p className="text-xs text-[var(--color-text-secondary)] mt-2">
           Press Enter to send, Shift+Enter for new line
         </p>
       </div>

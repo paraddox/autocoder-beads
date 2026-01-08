@@ -2,7 +2,7 @@
  * Chat Message Component
  *
  * Displays a single message in the spec creation chat.
- * Supports user, assistant, and system messages with neobrutalism styling.
+ * Supports user, assistant, and system messages with soft editorial styling.
  */
 
 import { Bot, User, Info } from 'lucide-react'
@@ -25,27 +25,27 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const roleConfig = {
     user: {
       icon: User,
-      bgColor: 'bg-[var(--color-neo-pending)]',
-      borderColor: 'border-[var(--color-neo-border)]',
+      bgColor: 'bg-[var(--color-pending)]',
+      borderColor: 'border-[var(--color-border)]',
       align: 'justify-end',
       bubbleAlign: 'items-end',
-      iconBg: 'bg-[var(--color-neo-pending)]',
+      iconBg: 'bg-[var(--color-pending)]',
     },
     assistant: {
       icon: Bot,
       bgColor: 'bg-white',
-      borderColor: 'border-[var(--color-neo-border)]',
+      borderColor: 'border-[var(--color-border)]',
       align: 'justify-start',
       bubbleAlign: 'items-start',
-      iconBg: 'bg-[var(--color-neo-progress)]',
+      iconBg: 'bg-[var(--color-progress)]',
     },
     system: {
       icon: Info,
-      bgColor: 'bg-[var(--color-neo-done)]',
-      borderColor: 'border-[var(--color-neo-border)]',
+      bgColor: 'bg-[var(--color-done)]',
+      borderColor: 'border-[var(--color-border)]',
       align: 'justify-center',
       bubbleAlign: 'items-center',
-      iconBg: 'bg-[var(--color-neo-done)]',
+      iconBg: 'bg-[var(--color-done)]',
     },
   }
 
@@ -59,10 +59,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
         <div
           className={`
             ${config.bgColor}
-            border-2 ${config.borderColor}
+            border ${config.borderColor}
             px-4 py-2
+            rounded-md
             text-sm font-mono
-            shadow-[2px_2px_0px_rgba(0,0,0,1)]
+            shadow-sm
           `}
         >
           <span className="flex items-center gap-2">
@@ -83,9 +84,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
             <div
               className={`
                 ${config.iconBg}
-                border-2 border-[var(--color-neo-border)]
+                border border-[var(--color-border)]
                 p-1.5
-                shadow-[2px_2px_0px_rgba(0,0,0,1)]
+                rounded-full
+                shadow-sm
                 flex-shrink-0
               `}
             >
@@ -96,15 +98,16 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <div
             className={`
               ${config.bgColor}
-              border-3 ${config.borderColor}
+              border ${config.borderColor}
               px-4 py-3
-              shadow-[4px_4px_0px_rgba(0,0,0,1)]
-              ${isStreaming ? 'animate-pulse-neo' : ''}
+              rounded-lg
+              shadow-sm
+              ${isStreaming ? 'opacity-90' : ''}
             `}
           >
             {/* Parse content for basic markdown-like formatting */}
             {content && (
-              <div className="whitespace-pre-wrap text-sm leading-relaxed text-[#1a1a1a]">
+              <div className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--color-text)]">
                 {content.split('\n').map((line, i) => {
                   // Bold text
                   const boldRegex = /\*\*(.*?)\*\*/g
@@ -117,7 +120,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                       parts.push(line.slice(lastIndex, match.index))
                     }
                     parts.push(
-                      <strong key={`bold-${i}-${match.index}`} className="font-bold">
+                      <strong key={`bold-${i}-${match.index}`} className="font-medium">
                         {match[1]}
                       </strong>
                     )
@@ -144,16 +147,16 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 {attachments.map((attachment) => (
                   <div
                     key={attachment.id}
-                    className="border-2 border-[var(--color-neo-border)] p-1 bg-white shadow-[2px_2px_0px_rgba(0,0,0,1)]"
+                    className="border border-[var(--color-border)] p-1 bg-white rounded-md shadow-sm"
                   >
                     <img
                       src={attachment.previewUrl}
                       alt={attachment.filename}
-                      className="max-w-48 max-h-48 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                      className="max-w-48 max-h-48 object-contain cursor-pointer hover:opacity-90 transition-opacity rounded"
                       onClick={() => window.open(attachment.previewUrl, '_blank')}
                       title={`${attachment.filename} (click to enlarge)`}
                     />
-                    <span className="text-xs text-[var(--color-neo-text-secondary)] block mt-1 text-center">
+                    <span className="text-xs text-[var(--color-text-secondary)] block mt-1 text-center">
                       {attachment.filename}
                     </span>
                   </div>
@@ -163,7 +166,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
             {/* Streaming indicator */}
             {isStreaming && (
-              <span className="inline-block w-2 h-4 bg-[var(--color-neo-accent)] ml-1 animate-pulse" />
+              <span className="inline-block w-2 h-4 bg-[var(--color-accent)] ml-1 animate-pulse rounded-sm" />
             )}
           </div>
 
@@ -171,9 +174,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
             <div
               className={`
                 ${config.iconBg}
-                border-2 border-[var(--color-neo-border)]
+                border border-[var(--color-border)]
                 p-1.5
-                shadow-[2px_2px_0px_rgba(0,0,0,1)]
+                rounded-full
+                shadow-sm
                 flex-shrink-0
               `}
             >
@@ -183,7 +187,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         </div>
 
         {/* Timestamp */}
-        <span className="text-xs text-[var(--color-neo-text-secondary)] font-mono px-2">
+        <span className="text-xs text-[var(--color-text-secondary)] font-mono px-2">
           {timeString}
         </span>
       </div>

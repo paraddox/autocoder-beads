@@ -26,12 +26,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   }, [checkAndComplete])
 
   return (
-    <div className="min-h-screen bg-[var(--color-neo-bg)] flex items-center justify-center p-4">
-      <div className="neo-card w-full max-w-lg p-8">
-        <h1 className="font-display text-3xl font-bold text-center mb-2">
+    <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-4">
+      <div className="card w-full max-w-lg p-8">
+        <h1 className="font-display text-3xl font-medium text-center mb-2">
           Setup Wizard
         </h1>
-        <p className="text-center text-[var(--color-neo-text-secondary)] mb-8">
+        <p className="text-center text-[var(--color-text-secondary)] mb-8">
           Let's make sure everything is ready to go
         </p>
 
@@ -100,7 +100,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         {isReady && (
           <button
             onClick={onComplete}
-            className="neo-btn neo-btn-success w-full mt-8"
+            className="btn btn-success w-full mt-8"
           >
             Continue to Dashboard
           </button>
@@ -108,8 +108,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
         {/* Error Message */}
         {(healthError || setupError) && (
-          <div className="mt-6 p-4 bg-[var(--color-neo-danger)] text-white border-3 border-[var(--color-neo-border)]">
-            <p className="font-bold mb-2">Setup Error</p>
+          <div className="mt-6 p-4 bg-[var(--color-danger)] text-white border border-[var(--color-border)] rounded-lg">
+            <p className="font-medium mb-2">Setup Error</p>
             <p className="text-sm">
               {healthError
                 ? 'Cannot connect to the backend server. Make sure to run start_ui.py first.'
@@ -140,31 +140,31 @@ function SetupItem({
   optional,
 }: SetupItemProps) {
   return (
-    <div className="flex items-start gap-4 p-4 bg-[var(--color-neo-bg)] border-3 border-[var(--color-neo-border)]">
+    <div className="flex items-start gap-4 p-4 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg">
       {/* Status Icon */}
       <div className="flex-shrink-0 mt-1">
         {status === 'success' ? (
-          <CheckCircle2 size={24} className="text-[var(--color-neo-done)]" />
+          <CheckCircle2 size={24} className="text-[var(--color-done)]" />
         ) : status === 'error' ? (
-          <XCircle size={24} className="text-[var(--color-neo-danger)]" />
+          <XCircle size={24} className="text-[var(--color-danger)]" />
         ) : status === 'warning' ? (
-          <XCircle size={24} className="text-[var(--color-neo-pending)]" />
+          <XCircle size={24} className="text-[var(--color-pending)]" />
         ) : (
-          <Loader2 size={24} className="animate-spin text-[var(--color-neo-progress)]" />
+          <Loader2 size={24} className="animate-spin text-[var(--color-progress)]" />
         )}
       </div>
 
       {/* Content */}
       <div className="flex-1">
         <div className="flex items-center gap-2">
-          <span className="font-display font-bold">{label}</span>
+          <span className="font-display font-medium">{label}</span>
           {optional && (
-            <span className="text-xs text-[var(--color-neo-text-secondary)]">
+            <span className="text-xs text-[var(--color-text-secondary)]">
               (optional)
             </span>
           )}
         </div>
-        <p className="text-sm text-[var(--color-neo-text-secondary)]">
+        <p className="text-sm text-[var(--color-text-secondary)]">
           {description}
         </p>
         {(status === 'error' || status === 'warning') && helpLink && (
@@ -172,7 +172,7 @@ function SetupItem({
             href={helpLink}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 mt-2 text-sm text-[var(--color-neo-accent)] hover:underline"
+            className="inline-flex items-center gap-1 mt-2 text-sm text-[var(--color-accent)] hover:underline"
           >
             {helpText} <ExternalLink size={12} />
           </a>

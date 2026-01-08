@@ -113,18 +113,18 @@ export function DebugLogViewer({
     return 'info'
   }
 
-  // Get color class for log level
+  // Get color class for log level - softer colors
   const getLogColor = (level: LogLevel): string => {
     switch (level) {
       case 'error':
-        return 'text-red-400'
+        return 'text-rose-400'
       case 'warn':
-        return 'text-yellow-400'
+        return 'text-amber-400'
       case 'debug':
-        return 'text-gray-400'
+        return 'text-slate-500'
       case 'info':
       default:
-        return 'text-green-400'
+        return 'text-emerald-400'
     }
   }
 
@@ -148,40 +148,40 @@ export function DebugLogViewer({
       className={`fixed bottom-0 left-0 right-0 z-40 ${
         isResizing ? '' : 'transition-all duration-200'
       }`}
-      style={{ height: isOpen ? panelHeight : 40 }}
+      style={{ height: isOpen ? panelHeight : 36 }}
     >
       {/* Resize handle - only visible when open */}
       {isOpen && (
         <div
-          className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize group flex items-center justify-center -translate-y-1/2 z-50"
+          className="absolute top-0 left-0 right-0 h-3 cursor-ns-resize group flex items-center justify-center -translate-y-1/2 z-50"
           onMouseDown={handleResizeStart}
         >
-          <div className="w-16 h-1.5 bg-[#333] rounded-full group-hover:bg-[#555] transition-colors flex items-center justify-center">
-            <GripHorizontal size={12} className="text-gray-500 group-hover:text-gray-400" />
+          <div className="w-12 h-1 bg-slate-600 rounded-full group-hover:bg-slate-500 transition-colors flex items-center justify-center">
+            <GripHorizontal size={10} className="text-slate-400 group-hover:text-slate-300" />
           </div>
         </div>
       )}
 
       {/* Header bar */}
       <div
-        className="flex items-center justify-between h-10 px-4 bg-[#1a1a1a] border-t-3 border-black cursor-pointer"
+        className="flex items-center justify-between h-9 px-4 bg-slate-900 border-t border-slate-700 cursor-pointer"
         onClick={onToggle}
       >
         <div className="flex items-center gap-2">
-          <Terminal size={16} className="text-green-400" />
-          <span className="font-mono text-sm text-white font-bold">
+          <Terminal size={14} className="text-emerald-400" />
+          <span className="font-mono text-sm text-slate-200 font-medium">
             Debug
           </span>
-          <span className="px-1.5 py-0.5 text-xs font-mono bg-[#333] text-gray-500 rounded" title="Toggle debug panel">
+          <kbd className="px-1.5 py-0.5 text-xs font-mono bg-slate-800 text-slate-500 rounded">
             D
-          </span>
+          </kbd>
           {logs.length > 0 && (
-            <span className="px-2 py-0.5 text-xs font-mono bg-[#333] text-gray-300 rounded">
+            <span className="px-2 py-0.5 text-xs font-mono bg-slate-800 text-slate-400 rounded-full">
               {logs.length}
             </span>
           )}
           {!autoScroll && isOpen && (
-            <span className="px-2 py-0.5 text-xs font-mono bg-yellow-600 text-white rounded">
+            <span className="px-2 py-0.5 text-xs font-medium bg-amber-900/50 text-amber-400 rounded-full">
               Paused
             </span>
           )}
@@ -194,17 +194,17 @@ export function DebugLogViewer({
                 e.stopPropagation()
                 onClear()
               }}
-              className="p-1.5 hover:bg-[#333] rounded transition-colors"
+              className="p-1.5 hover:bg-slate-800 rounded transition-colors"
               title="Clear logs"
             >
-              <Trash2 size={14} className="text-gray-400" />
+              <Trash2 size={14} className="text-slate-500 hover:text-slate-400" />
             </button>
           )}
           <div className="p-1">
             {isOpen ? (
-              <ChevronDown size={16} className="text-gray-400" />
+              <ChevronDown size={14} className="text-slate-500" />
             ) : (
-              <ChevronUp size={16} className="text-gray-400" />
+              <ChevronUp size={14} className="text-slate-500" />
             )}
           </div>
         </div>
@@ -215,10 +215,10 @@ export function DebugLogViewer({
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="h-[calc(100%-2.5rem)] overflow-y-auto bg-[#1a1a1a] p-2 font-mono text-sm"
+          className="h-[calc(100%-2.25rem)] overflow-y-auto bg-slate-900 p-3 font-mono text-sm"
         >
           {logs.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-gray-500">
+            <div className="flex items-center justify-center h-full text-slate-600">
               No logs yet. Start the agent to see output.
             </div>
           ) : (
@@ -231,12 +231,12 @@ export function DebugLogViewer({
                 return (
                   <div
                     key={`${log.timestamp}-${index}`}
-                    className="flex gap-2 hover:bg-[#2a2a2a] px-1 py-0.5 rounded"
+                    className="flex gap-3 hover:bg-slate-800/50 px-2 py-0.5 rounded"
                   >
-                    <span className="text-gray-500 select-none shrink-0">
+                    <span className="text-slate-600 select-none shrink-0 text-xs">
                       {timestamp}
                     </span>
-                    <span className={`${colorClass} whitespace-pre-wrap break-all`}>
+                    <span className={`${colorClass} whitespace-pre-wrap break-all text-xs leading-relaxed`}>
                       {log.line}
                     </span>
                   </div>

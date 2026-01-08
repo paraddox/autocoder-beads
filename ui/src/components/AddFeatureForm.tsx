@@ -65,19 +65,19 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
   const isValid = category.trim() && name.trim() && description.trim()
 
   return (
-    <div className="neo-modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="neo-modal w-full max-w-2xl"
+        className="modal w-full max-w-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b-3 border-[var(--color-neo-border)]">
-          <h2 className="font-display text-2xl font-bold">
+        <div className="flex items-center justify-between p-6 border-b border-[var(--color-border)]">
+          <h2 className="font-display text-2xl font-medium">
             Add Feature
           </h2>
           <button
             onClick={onClose}
-            className="neo-btn neo-btn-ghost p-2"
+            className="btn btn-ghost p-2"
           >
             <X size={24} />
           </button>
@@ -87,7 +87,7 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Error Message */}
           {error && (
-            <div className="flex items-center gap-3 p-4 bg-[var(--color-neo-danger)] text-white border-3 border-[var(--color-neo-border)]">
+            <div className="flex items-center gap-3 p-4 bg-[var(--color-danger)] text-white border border-[var(--color-border)] rounded-md">
               <AlertCircle size={20} />
               <span>{error}</span>
               <button
@@ -103,7 +103,7 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
           {/* Category & Priority Row */}
           <div className="flex gap-4">
             <div className="flex-1">
-              <label className="block font-display font-bold mb-2 uppercase text-sm">
+              <label className="block font-medium mb-2 text-sm text-[var(--color-text-secondary)]">
                 Category
               </label>
               <input
@@ -111,12 +111,12 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 placeholder="e.g., Authentication, UI, API"
-                className="neo-input"
+                className="input"
                 required
               />
             </div>
             <div className="w-32">
-              <label className="block font-display font-bold mb-2 uppercase text-sm">
+              <label className="block font-medium mb-2 text-sm text-[var(--color-text-secondary)]">
                 Priority
               </label>
               <input
@@ -125,14 +125,14 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
                 onChange={(e) => setPriority(e.target.value)}
                 placeholder="Auto"
                 min="1"
-                className="neo-input"
+                className="input"
               />
             </div>
           </div>
 
           {/* Name */}
           <div>
-            <label className="block font-display font-bold mb-2 uppercase text-sm">
+            <label className="block font-medium mb-2 text-sm text-[var(--color-text-secondary)]">
               Feature Name
             </label>
             <input
@@ -140,34 +140,34 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., User login form"
-              className="neo-input"
+              className="input"
               required
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block font-display font-bold mb-2 uppercase text-sm">
+            <label className="block font-medium mb-2 text-sm text-[var(--color-text-secondary)]">
               Description
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe what this feature should do..."
-              className="neo-input min-h-[100px] resize-y"
+              className="input min-h-[100px] resize-y"
               required
             />
           </div>
 
           {/* Steps */}
           <div>
-            <label className="block font-display font-bold mb-2 uppercase text-sm">
+            <label className="block font-medium mb-2 text-sm text-[var(--color-text-secondary)]">
               Test Steps (Optional)
             </label>
             <div className="space-y-2">
               {steps.map((step, index) => (
                 <div key={step.id} className="flex gap-2">
-                  <span className="neo-input w-12 text-center flex-shrink-0 flex items-center justify-center">
+                  <span className="input w-12 text-center flex-shrink-0 flex items-center justify-center">
                     {index + 1}
                   </span>
                   <input
@@ -175,13 +175,13 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
                     value={step.value}
                     onChange={(e) => handleStepChange(step.id, e.target.value)}
                     placeholder="Describe this step..."
-                    className="neo-input flex-1"
+                    className="input flex-1"
                   />
                   {steps.length > 1 && (
                     <button
                       type="button"
                       onClick={() => handleRemoveStep(step.id)}
-                      className="neo-btn neo-btn-ghost p-2"
+                      className="btn btn-ghost p-2"
                     >
                       <Trash2 size={18} />
                     </button>
@@ -192,7 +192,7 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
             <button
               type="button"
               onClick={handleAddStep}
-              className="neo-btn neo-btn-ghost mt-2 text-sm"
+              className="btn btn-ghost mt-2 text-sm"
             >
               <Plus size={16} />
               Add Step
@@ -200,11 +200,11 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
           </div>
 
           {/* Actions */}
-          <div className="flex gap-3 pt-4 border-t-3 border-[var(--color-neo-border)]">
+          <div className="flex gap-3 pt-4 border-t border-[var(--color-border)]">
             <button
               type="submit"
               disabled={!isValid || createFeature.isPending}
-              className="neo-btn neo-btn-success flex-1"
+              className="btn btn-success flex-1"
             >
               {createFeature.isPending ? (
                 <Loader2 size={18} className="animate-spin" />
@@ -218,7 +218,7 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
             <button
               type="button"
               onClick={onClose}
-              className="neo-btn neo-btn-ghost"
+              className="btn btn-ghost"
             >
               Cancel
             </button>

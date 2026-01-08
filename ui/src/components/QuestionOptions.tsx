@@ -2,7 +2,7 @@
  * Question Options Component
  *
  * Renders structured questions from AskUserQuestion tool.
- * Shows clickable option buttons in neobrutalism style.
+ * Shows clickable option buttons with soft editorial styling.
  */
 
 import { useState } from 'react'
@@ -93,18 +93,18 @@ export function QuestionOptions({
       {questions.map((q, questionIdx) => (
         <div
           key={questionIdx}
-          className="neo-card p-4 bg-white"
+          className="card p-4 bg-[var(--color-bg)]"
         >
           {/* Question header */}
           <div className="flex items-center gap-3 mb-4">
-            <span className="neo-badge bg-[var(--color-neo-accent)] text-white">
+            <span className="badge bg-[var(--color-accent)] text-white">
               {q.header}
             </span>
-            <span className="font-bold text-[var(--color-neo-text)]">
+            <span className="font-medium text-[var(--color-text)]">
               {q.question}
             </span>
             {q.multiSelect && (
-              <span className="text-xs text-[var(--color-neo-text-secondary)] font-mono">
+              <span className="text-xs text-[var(--color-text-secondary)] font-mono">
                 (select multiple)
               </span>
             )}
@@ -122,12 +122,12 @@ export function QuestionOptions({
                   disabled={disabled}
                   className={`
                     text-left p-4
-                    border-3 border-[var(--color-neo-border)]
+                    border border-[var(--color-border)] rounded-md
                     transition-all duration-150
                     ${
                       isSelected
-                        ? 'bg-[var(--color-neo-pending)] shadow-[2px_2px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]'
-                        : 'bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[5px_5px_0px_rgba(0,0,0,1)]'
+                        ? 'bg-[var(--color-pending)] shadow-sm'
+                        : 'bg-[var(--color-bg)] shadow-sm hover:shadow-md hover:border-[var(--color-accent)]'
                     }
                     disabled:opacity-50 disabled:cursor-not-allowed
                   `}
@@ -137,20 +137,20 @@ export function QuestionOptions({
                     <div
                       className={`
                         w-5 h-5 flex-shrink-0 mt-0.5
-                        border-2 border-[var(--color-neo-border)]
+                        border border-[var(--color-border)]
                         flex items-center justify-center
-                        ${q.multiSelect ? '' : 'rounded-full'}
-                        ${isSelected ? 'bg-[var(--color-neo-done)]' : 'bg-white'}
+                        ${q.multiSelect ? 'rounded' : 'rounded-full'}
+                        ${isSelected ? 'bg-[var(--color-done)] border-[var(--color-done)]' : 'bg-[var(--color-bg)]'}
                       `}
                     >
-                      {isSelected && <Check size={12} strokeWidth={3} />}
+                      {isSelected && <Check size={12} strokeWidth={2} className="text-white" />}
                     </div>
 
                     <div className="flex-1">
-                      <div className="font-bold text-[var(--color-neo-text)]">
+                      <div className="font-medium text-[var(--color-text)]">
                         {opt.label}
                       </div>
-                      <div className="text-sm text-[var(--color-neo-text-secondary)] mt-1">
+                      <div className="text-sm text-[var(--color-text-secondary)] mt-1">
                         {opt.description}
                       </div>
                     </div>
@@ -165,12 +165,12 @@ export function QuestionOptions({
               disabled={disabled}
               className={`
                 text-left p-4
-                border-3 border-[var(--color-neo-border)]
+                border border-[var(--color-border)] rounded-md
                 transition-all duration-150
                 ${
                   showCustomInput[String(questionIdx)]
-                    ? 'bg-[var(--color-neo-pending)] shadow-[2px_2px_0px_rgba(0,0,0,1)] translate-x-[1px] translate-y-[1px]'
-                    : 'bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[5px_5px_0px_rgba(0,0,0,1)]'
+                    ? 'bg-[var(--color-pending)] shadow-sm'
+                    : 'bg-[var(--color-bg)] shadow-sm hover:shadow-md hover:border-[var(--color-accent)]'
                 }
                 disabled:opacity-50 disabled:cursor-not-allowed
               `}
@@ -179,18 +179,18 @@ export function QuestionOptions({
                 <div
                   className={`
                     w-5 h-5 flex-shrink-0 mt-0.5
-                    border-2 border-[var(--color-neo-border)]
+                    border border-[var(--color-border)]
                     flex items-center justify-center
-                    ${q.multiSelect ? '' : 'rounded-full'}
-                    ${showCustomInput[String(questionIdx)] ? 'bg-[var(--color-neo-done)]' : 'bg-white'}
+                    ${q.multiSelect ? 'rounded' : 'rounded-full'}
+                    ${showCustomInput[String(questionIdx)] ? 'bg-[var(--color-done)] border-[var(--color-done)]' : 'bg-[var(--color-bg)]'}
                   `}
                 >
-                  {showCustomInput[String(questionIdx)] && <Check size={12} strokeWidth={3} />}
+                  {showCustomInput[String(questionIdx)] && <Check size={12} strokeWidth={2} className="text-white" />}
                 </div>
 
                 <div className="flex-1">
-                  <div className="font-bold text-[var(--color-neo-text)]">Other</div>
-                  <div className="text-sm text-[var(--color-neo-text-secondary)] mt-1">
+                  <div className="font-medium text-[var(--color-text)]">Other</div>
+                  <div className="text-sm text-[var(--color-text-secondary)] mt-1">
                     Provide a custom answer
                   </div>
                 </div>
@@ -206,7 +206,7 @@ export function QuestionOptions({
                 value={customInputs[String(questionIdx)] || ''}
                 onChange={(e) => handleCustomInputChange(questionIdx, e.target.value)}
                 placeholder="Type your answer..."
-                className="neo-input"
+                className="input"
                 autoFocus
                 disabled={disabled}
               />
@@ -220,7 +220,7 @@ export function QuestionOptions({
         <button
           onClick={handleSubmit}
           disabled={disabled || !allQuestionsAnswered}
-          className="neo-btn neo-btn-primary"
+          className="btn btn-primary"
         >
           Continue
         </button>
