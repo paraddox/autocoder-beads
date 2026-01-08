@@ -20,41 +20,15 @@ PROGRESS_CACHE_FILE = ".progress_cache"
 
 def has_features(project_dir: Path) -> bool:
     """
-    Check if the project has features.
+    Check if the project has features in beads.
 
     This is used to determine if the initializer agent needs to run.
 
-    Returns True if:
-    - .beads/ exists with issues, OR
-    - features.db exists (legacy, for backward compatibility)
-
+    Returns True if .beads/ exists with issues.
     Returns False if no features exist (initializer needs to run).
     """
-    # Check beads first
     client = BeadsClient(project_dir)
-    if client.has_features():
-        return True
-
-    # Check legacy SQLite database for backward compatibility
-    db_file = project_dir / "features.db"
-    if db_file.exists():
-        try:
-            import sqlite3
-            conn = sqlite3.connect(db_file)
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM features")
-            count = cursor.fetchone()[0]
-            conn.close()
-            return count > 0
-        except Exception:
-            pass
-
-    # Check legacy JSON file
-    json_file = project_dir / "feature_list.json"
-    if json_file.exists():
-        return True
-
-    return False
+    return client.has_features()
 
 
 def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
@@ -67,38 +41,16 @@ def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
     Returns:
         (passing_count, in_progress_count, total_count)
     """
-    # Try beads first
     client = BeadsClient(project_dir)
-    if client.is_initialized():
-        stats = client.get_stats()
-        return (
-            stats.get("passing", 0),
-            stats.get("in_progress", 0),
-            stats.get("total", 0),
-        )
+    if not client.is_initialized():
+        return 0, 0, 0
 
-    # Fall back to legacy SQLite database
-    db_file = project_dir / "features.db"
-    if db_file.exists():
-        try:
-            import sqlite3
-            conn = sqlite3.connect(db_file)
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM features")
-            total = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(*) FROM features WHERE passes = 1")
-            passing = cursor.fetchone()[0]
-            try:
-                cursor.execute("SELECT COUNT(*) FROM features WHERE in_progress = 1")
-                in_progress = cursor.fetchone()[0]
-            except sqlite3.OperationalError:
-                in_progress = 0
-            conn.close()
-            return passing, in_progress, total
-        except Exception as e:
-            print(f"[Database error in count_passing_tests: {e}]")
-
-    return 0, 0, 0
+    stats = client.get_stats()
+    return (
+        stats.get("passing", 0),
+        stats.get("in_progress", 0),
+        stats.get("total", 0),
+    )
 
 
 def get_all_passing_features(project_dir: Path) -> list[dict]:
@@ -111,31 +63,11 @@ def get_all_passing_features(project_dir: Path) -> list[dict]:
     Returns:
         List of dicts with id, category, name for each passing feature
     """
-    # Try beads first
     client = BeadsClient(project_dir)
-    if client.is_initialized():
-        return client.get_all_passing()
+    if not client.is_initialized():
+        return []
 
-    # Fall back to legacy SQLite database
-    db_file = project_dir / "features.db"
-    if db_file.exists():
-        try:
-            import sqlite3
-            conn = sqlite3.connect(db_file)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id, category, name FROM features WHERE passes = 1 ORDER BY priority ASC"
-            )
-            features = [
-                {"id": row[0], "category": row[1], "name": row[2]}
-                for row in cursor.fetchall()
-            ]
-            conn.close()
-            return features
-        except Exception:
-            pass
-
-    return []
+    return client.get_all_passing()
 
 
 def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
@@ -158,21 +90,16 @@ def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
 
     # Only notify if progress increased
     if passing > previous:
-        # Find which features are now passing via API
+        # Find which features are now passing
         completed_tests = []
         current_passing_ids = []
-
-        # Detect transition from old cache format (had count but no passing_ids)
-        # In this case, we can't reliably identify which specific tests are new
-        is_old_cache_format = len(previous_passing_ids) == 0 and previous > 0
 
         # Get all passing features
         all_passing = get_all_passing_features(project_dir)
         for feature in all_passing:
             feature_id = str(feature.get("id"))
             current_passing_ids.append(feature_id)
-            # Only identify individual new tests if we have previous IDs to compare
-            if not is_old_cache_format and feature_id not in previous_passing_ids:
+            if feature_id not in previous_passing_ids:
                 # This feature is newly passing
                 name = feature.get("name", f"Feature #{feature_id}")
                 category = feature.get("category", "")
@@ -239,4 +166,4 @@ def print_progress_summary(project_dir: Path) -> None:
         print(f"\nProgress: {', '.join(status_parts)}")
         send_progress_webhook(passing, total, project_dir)
     else:
-        print("\nProgress: No features in database yet")
+        print("\nProgress: No features yet")
