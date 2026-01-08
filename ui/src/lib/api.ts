@@ -16,6 +16,7 @@ import type {
   PathValidationResponse,
   AssistantConversation,
   AssistantConversationDetail,
+  WizardStatus,
 } from './types'
 
 const API_BASE = '/api'
@@ -77,6 +78,26 @@ export async function updateProjectPrompts(
   await fetchJSON(`/projects/${encodeURIComponent(name)}/prompts`, {
     method: 'PUT',
     body: JSON.stringify(prompts),
+  })
+}
+
+export async function getWizardStatus(name: string): Promise<WizardStatus | null> {
+  return fetchJSON(`/projects/${encodeURIComponent(name)}/wizard-status`)
+}
+
+export async function updateWizardStatus(
+  name: string,
+  status: WizardStatus
+): Promise<WizardStatus> {
+  return fetchJSON(`/projects/${encodeURIComponent(name)}/wizard-status`, {
+    method: 'PUT',
+    body: JSON.stringify(status),
+  })
+}
+
+export async function deleteWizardStatus(name: string): Promise<void> {
+  await fetchJSON(`/projects/${encodeURIComponent(name)}/wizard-status`, {
+    method: 'DELETE',
   })
 }
 

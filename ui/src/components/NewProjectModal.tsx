@@ -7,14 +7,17 @@
  * 3. Choose spec method (Claude or manual)
  * 4a. If Claude: Show SpecCreationChat
  * 4b. If manual: Create project and close
+ *
+ * Also supports resuming an interrupted wizard via resumeState prop.
  */
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { X, Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder } from 'lucide-react'
 import { useCreateProject } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
-import { startAgent } from '../lib/api'
+import { startAgent, updateWizardStatus, deleteWizardStatus } from '../lib/api'
+import type { WizardStatus, WizardStep, SpecMethod as SpecMethodType } from '../lib/types'
 
 type InitializerStatus = 'idle' | 'starting' | 'error'
 
@@ -25,30 +28,74 @@ interface NewProjectModalProps {
   isOpen: boolean
   onClose: () => void
   onProjectCreated: (projectName: string) => void
+  // For resuming an interrupted wizard
+  resumeProjectName?: string
+  resumeState?: WizardStatus
 }
 
 export function NewProjectModal({
   isOpen,
   onClose,
   onProjectCreated,
+  resumeProjectName,
+  resumeState,
 }: NewProjectModalProps) {
   const [step, setStep] = useState<Step>('name')
   const [projectName, setProjectName] = useState('')
   const [projectPath, setProjectPath] = useState<string | null>(null)
-  const [_specMethod, setSpecMethod] = useState<SpecMethod | null>(null)
+  const [specMethod, setSpecMethod] = useState<SpecMethod | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [initializerStatus, setInitializerStatus] = useState<InitializerStatus>('idle')
   const [initializerError, setInitializerError] = useState<string | null>(null)
   const [yoloModeSelected, setYoloModeSelected] = useState(false)
-
-  // Suppress unused variable warning - specMethod may be used in future
-  void _specMethod
+  const [isResuming, setIsResuming] = useState(false)
 
   const createProject = useCreateProject()
 
+  // Initialize state from resume data
+  useEffect(() => {
+    if (isOpen && resumeProjectName && resumeState) {
+      setIsResuming(true)
+      setProjectName(resumeProjectName)
+      // Map wizard step to modal step
+      const stepMap: Record<WizardStep, Step> = {
+        'name': 'name',
+        'folder': 'folder',
+        'method': 'method',
+        'chat': 'chat',
+      }
+      setStep(stepMap[resumeState.step] || 'method')
+      if (resumeState.spec_method) {
+        setSpecMethod(resumeState.spec_method)
+      }
+    } else if (isOpen && !resumeProjectName) {
+      setIsResuming(false)
+    }
+  }, [isOpen, resumeProjectName, resumeState])
+
+  // Persist wizard state when step changes
+  const persistWizardState = useCallback(async (newStep: Step, method?: SpecMethod | null) => {
+    if (!projectName.trim()) return
+    // Don't persist 'complete' step
+    if (newStep === 'complete') return
+
+    try {
+      const wizardStep: WizardStep = newStep === 'chat' ? 'chat' : newStep
+      await updateWizardStatus(projectName.trim(), {
+        step: wizardStep,
+        spec_method: (method ?? specMethod) as SpecMethodType | null,
+        started_at: new Date().toISOString(),
+        chat_messages: [], // Chat messages are handled separately by SpecCreationChat
+      })
+    } catch (err) {
+      // Silently fail - don't block the UI for persistence errors
+      console.error('Failed to persist wizard state:', err)
+    }
+  }, [projectName, specMethod])
+
   if (!isOpen) return null
 
-  const handleNameSubmit = (e: React.FormEvent) => {
+  const handleNameSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const trimmed = projectName.trim()
 
@@ -64,13 +111,15 @@ export function NewProjectModal({
 
     setError(null)
     setStep('folder')
+    await persistWizardState('folder')
   }
 
-  const handleFolderSelect = (path: string) => {
+  const handleFolderSelect = async (path: string) => {
     // Append project name to the selected path
     const fullPath = path.endsWith('/') ? `${path}${projectName.trim()}` : `${path}/${projectName.trim()}`
     setProjectPath(fullPath)
     setStep('method')
+    await persistWizardState('method')
   }
 
   const handleFolderCancel = () => {
@@ -80,37 +129,45 @@ export function NewProjectModal({
   const handleMethodSelect = async (method: SpecMethod) => {
     setSpecMethod(method)
 
-    if (!projectPath) {
+    // For resuming, we may not have projectPath but the project already exists
+    if (!projectPath && !isResuming) {
       setError('Please select a project folder first')
       setStep('folder')
       return
     }
 
     if (method === 'manual') {
-      // Create project immediately with manual method
+      // Create project immediately with manual method (skip if resuming)
       try {
-        const project = await createProject.mutateAsync({
-          name: projectName.trim(),
-          path: projectPath,
-          specMethod: 'manual',
-        })
+        if (!isResuming && projectPath) {
+          const project = await createProject.mutateAsync({
+            name: projectName.trim(),
+            path: projectPath,
+            specMethod: 'manual',
+          })
+          // Clean up wizard status on completion
+          await deleteWizardStatus(project.name).catch(() => {})
+        }
         setStep('complete')
         setTimeout(() => {
-          onProjectCreated(project.name)
+          onProjectCreated(projectName.trim())
           handleClose()
         }, 1500)
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to create project')
       }
     } else {
-      // Create project then show chat
+      // Create project then show chat (skip creation if resuming)
       try {
-        await createProject.mutateAsync({
-          name: projectName.trim(),
-          path: projectPath,
-          specMethod: 'claude',
-        })
+        if (!isResuming && projectPath) {
+          await createProject.mutateAsync({
+            name: projectName.trim(),
+            path: projectPath,
+            specMethod: 'claude',
+          })
+        }
         setStep('chat')
+        await persistWizardState('chat', 'claude')
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to create project')
       }
@@ -124,6 +181,8 @@ export function NewProjectModal({
     setInitializerStatus('starting')
     try {
       await startAgent(projectName.trim(), yoloMode)
+      // Clean up wizard status on successful completion
+      await deleteWizardStatus(projectName.trim()).catch(() => {})
       // Success - navigate to project
       setStep('complete')
       setTimeout(() => {
@@ -148,8 +207,10 @@ export function NewProjectModal({
     setSpecMethod(null)
   }
 
-  const handleExitToProject = () => {
+  const handleExitToProject = async () => {
     // Exit chat and go directly to project - user can start agent manually
+    // Clean up wizard status since user is exiting
+    await deleteWizardStatus(projectName.trim()).catch(() => {})
     onProjectCreated(projectName.trim())
     handleClose()
   }
@@ -163,6 +224,7 @@ export function NewProjectModal({
     setInitializerStatus('idle')
     setInitializerError(null)
     setYoloModeSelected(false)
+    setIsResuming(false)
     onClose()
   }
 
@@ -179,7 +241,7 @@ export function NewProjectModal({
   // Full-screen chat view
   if (step === 'chat') {
     return (
-      <div className="fixed inset-0 z-50 bg-[var(--color-neo-bg)]">
+      <div className="fixed inset-0 z-50 bg-[var(--color-bg)]">
         <SpecCreationChat
           projectName={projectName.trim()}
           onComplete={handleSpecComplete}
@@ -196,27 +258,27 @@ export function NewProjectModal({
   // Folder step uses larger modal
   if (step === 'folder') {
     return (
-      <div className="neo-modal-backdrop" onClick={handleClose}>
+      <div className="modal-backdrop" onClick={handleClose}>
         <div
-          className="neo-modal w-full max-w-3xl max-h-[85vh] flex flex-col"
+          className="modal w-full max-w-3xl max-h-[85vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b-3 border-[var(--color-neo-border)]">
+          <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
             <div className="flex items-center gap-3">
-              <Folder size={24} className="text-[var(--color-neo-progress)]" />
+              <Folder size={24} className="text-[var(--color-accent)]" />
               <div>
-                <h2 className="font-display font-bold text-xl text-[#1a1a1a]">
+                <h2 className="font-medium text-xl text-[var(--color-text)]">
                   Select Project Location
                 </h2>
-                <p className="text-sm text-[#4a4a4a]">
-                  A folder named <span className="font-bold font-mono">{projectName}</span> will be created inside the selected directory
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  A folder named <span className="font-medium font-mono">{projectName}</span> will be created inside the selected directory
                 </p>
               </div>
             </div>
             <button
               onClick={handleClose}
-              className="neo-btn neo-btn-ghost p-2"
+              className="btn btn-ghost p-2"
             >
               <X size={20} />
             </button>
@@ -235,21 +297,21 @@ export function NewProjectModal({
   }
 
   return (
-    <div className="neo-modal-backdrop" onClick={handleClose}>
+    <div className="modal-backdrop" onClick={handleClose}>
       <div
-        className="neo-modal w-full max-w-lg"
+        className="modal w-full max-w-lg"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b-3 border-[var(--color-neo-border)]">
-          <h2 className="font-display font-bold text-xl text-[#1a1a1a]">
+        <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
+          <h2 className="font-medium text-xl text-[var(--color-text)]">
             {step === 'name' && 'Create New Project'}
             {step === 'method' && 'Choose Setup Method'}
             {step === 'complete' && 'Project Created!'}
           </h2>
           <button
             onClick={handleClose}
-            className="neo-btn neo-btn-ghost p-2"
+            className="btn btn-ghost p-2"
           >
             <X size={20} />
           </button>
@@ -261,7 +323,7 @@ export function NewProjectModal({
           {step === 'name' && (
             <form onSubmit={handleNameSubmit}>
               <div className="mb-6">
-                <label className="block font-bold mb-2 text-[#1a1a1a]">
+                <label className="block font-medium mb-2 text-[var(--color-text)]">
                   Project Name
                 </label>
                 <input
@@ -269,17 +331,17 @@ export function NewProjectModal({
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
                   placeholder="my-awesome-app"
-                  className="neo-input"
+                  className="input"
                   pattern="^[a-zA-Z0-9_-]+$"
                   autoFocus
                 />
-                <p className="text-sm text-[var(--color-neo-text-secondary)] mt-2">
+                <p className="text-sm text-[var(--color-text-secondary)] mt-2">
                   Use letters, numbers, hyphens, and underscores only.
                 </p>
               </div>
 
               {error && (
-                <div className="mb-4 p-3 bg-[var(--color-neo-danger)] text-white text-sm border-2 border-[var(--color-neo-border)]">
+                <div className="mb-4 p-3 bg-[var(--color-danger)] text-white text-sm rounded-md border border-[var(--color-border)]">
                   {error}
                 </div>
               )}
@@ -287,7 +349,7 @@ export function NewProjectModal({
               <div className="flex justify-end">
                 <button
                   type="submit"
-                  className="neo-btn neo-btn-primary"
+                  className="btn btn-primary"
                   disabled={!projectName.trim()}
                 >
                   Next
@@ -300,7 +362,7 @@ export function NewProjectModal({
           {/* Step 2: Spec Method */}
           {step === 'method' && (
             <div>
-              <p className="text-[var(--color-neo-text-secondary)] mb-6">
+              <p className="text-[var(--color-text-secondary)] mb-6">
                 How would you like to define your project?
               </p>
 
@@ -311,27 +373,27 @@ export function NewProjectModal({
                   disabled={createProject.isPending}
                   className={`
                     w-full text-left p-4
-                    border-3 border-[var(--color-neo-border)]
-                    bg-white
-                    shadow-[4px_4px_0px_rgba(0,0,0,1)]
-                    hover:translate-x-[-2px] hover:translate-y-[-2px]
-                    hover:shadow-[6px_6px_0px_rgba(0,0,0,1)]
+                    border border-[var(--color-border)]
+                    bg-[var(--color-bg)]
+                    rounded-lg
+                    hover:bg-[var(--color-bg-elevated)]
+                    hover:border-[var(--color-accent)]
                     transition-all duration-150
                     disabled:opacity-50 disabled:cursor-not-allowed
                   `}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="p-2 bg-[var(--color-neo-progress)] border-2 border-[var(--color-neo-border)] shadow-[2px_2px_0px_rgba(0,0,0,1)]">
+                    <div className="p-2 bg-[var(--color-accent)] rounded-md">
                       <Bot size={24} className="text-white" />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-lg text-[#1a1a1a]">Create with Claude</span>
-                        <span className="neo-badge bg-[var(--color-neo-done)] text-xs">
+                        <span className="font-medium text-lg text-[var(--color-text)]">Create with Claude</span>
+                        <span className="badge bg-[var(--color-success)] text-white text-xs">
                           Recommended
                         </span>
                       </div>
-                      <p className="text-sm text-[var(--color-neo-text-secondary)] mt-1">
+                      <p className="text-sm text-[var(--color-text-secondary)] mt-1">
                         Interactive conversation to define features and generate your app specification automatically.
                       </p>
                     </div>
@@ -344,22 +406,22 @@ export function NewProjectModal({
                   disabled={createProject.isPending}
                   className={`
                     w-full text-left p-4
-                    border-3 border-[var(--color-neo-border)]
-                    bg-white
-                    shadow-[4px_4px_0px_rgba(0,0,0,1)]
-                    hover:translate-x-[-2px] hover:translate-y-[-2px]
-                    hover:shadow-[6px_6px_0px_rgba(0,0,0,1)]
+                    border border-[var(--color-border)]
+                    bg-[var(--color-bg)]
+                    rounded-lg
+                    hover:bg-[var(--color-bg-elevated)]
+                    hover:border-[var(--color-accent)]
                     transition-all duration-150
                     disabled:opacity-50 disabled:cursor-not-allowed
                   `}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="p-2 bg-[var(--color-neo-pending)] border-2 border-[var(--color-neo-border)] shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                      <FileEdit size={24} />
+                    <div className="p-2 bg-[var(--color-warning)] rounded-md">
+                      <FileEdit size={24} className="text-[var(--color-text)]" />
                     </div>
                     <div className="flex-1">
-                      <span className="font-bold text-lg text-[#1a1a1a]">Edit Templates Manually</span>
-                      <p className="text-sm text-[var(--color-neo-text-secondary)] mt-1">
+                      <span className="font-medium text-lg text-[var(--color-text)]">Edit Templates Manually</span>
+                      <p className="text-sm text-[var(--color-text-secondary)] mt-1">
                         Edit the template files directly. Best for developers who want full control.
                       </p>
                     </div>
@@ -368,13 +430,13 @@ export function NewProjectModal({
               </div>
 
               {error && (
-                <div className="mt-4 p-3 bg-[var(--color-neo-danger)] text-white text-sm border-2 border-[var(--color-neo-border)]">
+                <div className="mt-4 p-3 bg-[var(--color-danger)] text-white text-sm rounded-md border border-[var(--color-border)]">
                   {error}
                 </div>
               )}
 
               {createProject.isPending && (
-                <div className="mt-4 flex items-center justify-center gap-2 text-[var(--color-neo-text-secondary)]">
+                <div className="mt-4 flex items-center justify-center gap-2 text-[var(--color-text-secondary)]">
                   <Loader2 size={16} className="animate-spin" />
                   <span>Creating project...</span>
                 </div>
@@ -383,7 +445,7 @@ export function NewProjectModal({
               <div className="flex justify-start mt-6">
                 <button
                   onClick={handleBack}
-                  className="neo-btn neo-btn-ghost"
+                  className="btn btn-ghost"
                   disabled={createProject.isPending}
                 >
                   <ArrowLeft size={16} />
@@ -396,18 +458,18 @@ export function NewProjectModal({
           {/* Step 3: Complete */}
           {step === 'complete' && (
             <div className="text-center py-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-[var(--color-neo-done)] border-3 border-[var(--color-neo-border)] shadow-[4px_4px_0px_rgba(0,0,0,1)] mb-4">
-                <CheckCircle2 size={32} />
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-[var(--color-success)] rounded-full mb-4">
+                <CheckCircle2 size={32} className="text-white" />
               </div>
-              <h3 className="font-display font-bold text-xl mb-2">
+              <h3 className="font-medium text-xl mb-2 text-[var(--color-text)]">
                 {projectName}
               </h3>
-              <p className="text-[var(--color-neo-text-secondary)]">
+              <p className="text-[var(--color-text-secondary)]">
                 Your project has been created successfully!
               </p>
               <div className="mt-4 flex items-center justify-center gap-2">
                 <Loader2 size={16} className="animate-spin" />
-                <span className="text-sm">Redirecting...</span>
+                <span className="text-sm text-[var(--color-text-secondary)]">Redirecting...</span>
               </div>
             </div>
           )}

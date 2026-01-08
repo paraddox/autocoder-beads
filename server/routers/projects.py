@@ -19,6 +19,7 @@ from ..schemas import (
     ProjectPromptsUpdate,
     ProjectStats,
     ProjectSummary,
+    WizardStatus,
 )
 
 # Lazy imports to avoid circular dependencies
@@ -97,6 +98,19 @@ def get_project_stats(project_dir: Path) -> ProjectStats:
     )
 
 
+def get_wizard_status_path(project_dir: Path) -> Path:
+    """Get the path to the wizard status file."""
+    return project_dir / "prompts" / ".wizard_status.json"
+
+
+def check_wizard_incomplete(project_dir: Path, has_spec: bool) -> bool:
+    """Check if a project has an incomplete wizard (status file exists but no spec)."""
+    if has_spec:
+        return False
+    wizard_file = get_wizard_status_path(project_dir)
+    return wizard_file.exists()
+
+
 @router.get("", response_model=list[ProjectSummary])
 async def list_projects():
     """List all registered projects."""
@@ -116,11 +130,13 @@ async def list_projects():
 
         has_spec = _check_spec_exists(project_dir)
         stats = get_project_stats(project_dir)
+        wizard_incomplete = check_wizard_incomplete(project_dir, has_spec)
 
         result.append(ProjectSummary(
             name=name,
             path=info["path"],
             has_spec=has_spec,
+            wizard_incomplete=wizard_incomplete,
             stats=stats,
         ))
 
@@ -338,3 +354,70 @@ async def get_project_stats_endpoint(name: str):
         raise HTTPException(status_code=404, detail="Project directory not found")
 
     return get_project_stats(project_dir)
+
+
+@router.get("/{name}/wizard-status", response_model=WizardStatus | None)
+async def get_wizard_status(name: str):
+    """Get the wizard status for a project, if it exists."""
+    import json
+    _, _, get_project_path, _, _ = _get_registry_functions()
+
+    name = validate_project_name(name)
+    project_dir = get_project_path(name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+
+    wizard_file = get_wizard_status_path(project_dir)
+    if not wizard_file.exists():
+        return None
+
+    try:
+        data = json.loads(wizard_file.read_text(encoding="utf-8"))
+        return WizardStatus(**data)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise HTTPException(status_code=500, detail=f"Invalid wizard status file: {e}")
+
+
+@router.put("/{name}/wizard-status", response_model=WizardStatus)
+async def update_wizard_status(name: str, status: WizardStatus):
+    """Create or update the wizard status for a project."""
+    import json
+    _, _, get_project_path, _, _ = _get_registry_functions()
+
+    name = validate_project_name(name)
+    project_dir = get_project_path(name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    wizard_file = get_wizard_status_path(project_dir)
+    wizard_file.parent.mkdir(parents=True, exist_ok=True)
+
+    wizard_file.write_text(
+        json.dumps(status.model_dump(), default=str, indent=2),
+        encoding="utf-8"
+    )
+
+    return status
+
+
+@router.delete("/{name}/wizard-status")
+async def delete_wizard_status(name: str):
+    """Delete the wizard status for a project (called on wizard completion)."""
+    _, _, get_project_path, _, _ = _get_registry_functions()
+
+    name = validate_project_name(name)
+    project_dir = get_project_path(name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+
+    wizard_file = get_wizard_status_path(project_dir)
+    if wizard_file.exists():
+        wizard_file.unlink()
+
+    return {"success": True, "message": "Wizard status cleared"}

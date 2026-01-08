@@ -35,6 +35,7 @@ class ProjectSummary(BaseModel):
     name: str
     path: str
     has_spec: bool
+    wizard_incomplete: bool = False
     stats: ProjectStats
 
 
@@ -59,6 +60,21 @@ class ProjectPromptsUpdate(BaseModel):
     app_spec: str | None = None
     initializer_prompt: str | None = None
     coding_prompt: str | None = None
+
+
+class WizardStatusMessage(BaseModel):
+    """A chat message stored in wizard status."""
+    role: Literal["user", "assistant"]
+    content: str
+    timestamp: datetime
+
+
+class WizardStatus(BaseModel):
+    """Wizard state for resuming interrupted project setup."""
+    step: Literal["name", "folder", "method", "chat"]
+    spec_method: Literal["claude", "manual"] | None = None
+    started_at: datetime
+    chat_messages: list[WizardStatusMessage] = []
 
 
 # ============================================================================

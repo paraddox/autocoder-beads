@@ -14,6 +14,7 @@ export interface ProjectSummary {
   name: string
   path: string
   has_spec: boolean
+  wizard_incomplete: boolean
   stats: ProjectStats
 }
 
@@ -54,6 +55,23 @@ export interface ProjectPrompts {
   app_spec: string
   initializer_prompt: string
   coding_prompt: string
+}
+
+// Wizard status types
+export interface WizardStatusMessage {
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: string
+}
+
+export type WizardStep = 'name' | 'folder' | 'method' | 'chat'
+export type SpecMethod = 'claude' | 'manual'
+
+export interface WizardStatus {
+  step: WizardStep
+  spec_method: SpecMethod | null
+  started_at: string
+  chat_messages: WizardStatusMessage[]
 }
 
 // Feature types

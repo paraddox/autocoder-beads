@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, Plus, FolderOpen, Loader2 } from 'lucide-react'
+import { ChevronDown, Plus, FolderOpen, Loader2, AlertCircle } from 'lucide-react'
 import type { ProjectSummary } from '../lib/types'
 import { NewProjectModal } from './NewProjectModal'
 
@@ -7,6 +7,7 @@ interface ProjectSelectorProps {
   projects: ProjectSummary[]
   selectedProject: string | null
   onSelectProject: (name: string | null) => void
+  onIncompleteProjectClick?: (project: ProjectSummary) => void
   isLoading: boolean
 }
 
@@ -14,6 +15,7 @@ export function ProjectSelector({
   projects,
   selectedProject,
   onSelectProject,
+  onIncompleteProjectClick,
   isLoading,
 }: ProjectSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -31,29 +33,32 @@ export function ProjectSelector({
       {/* Dropdown Trigger */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="neo-btn bg-white text-[var(--color-neo-text)] min-w-[200px] justify-between"
+        className="btn btn-secondary min-w-[200px] justify-between"
         disabled={isLoading}
       >
         {isLoading ? (
-          <Loader2 size={18} className="animate-spin" />
+          <Loader2 size={16} className="animate-spin" />
         ) : selectedProject ? (
           <>
             <span className="flex items-center gap-2">
-              <FolderOpen size={18} />
+              <FolderOpen size={16} className="text-[var(--color-text-secondary)]" />
               {selectedProject}
             </span>
             {selectedProjectData && selectedProjectData.stats.total > 0 && (
-              <span className="neo-badge bg-[var(--color-neo-done)] ml-2">
+              <span className="badge badge-done ml-2">
                 {selectedProjectData.stats.percentage}%
               </span>
             )}
           </>
         ) : (
-          <span className="text-[var(--color-neo-text-secondary)]">
+          <span className="text-[var(--color-text-muted)]">
             Select Project
           </span>
         )}
-        <ChevronDown size={18} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          size={16}
+          className={`text-[var(--color-text-muted)] transition-transform ${isOpen ? 'rotate-180' : ''}`}
+        />
       </button>
 
       {/* Dropdown Menu */}
@@ -66,28 +71,36 @@ export function ProjectSelector({
           />
 
           {/* Menu */}
-          <div className="absolute top-full left-0 mt-2 w-full neo-dropdown z-50 min-w-[280px]">
+          <div className="absolute top-full left-0 mt-2 w-full dropdown z-50 min-w-[280px]">
             {projects.length > 0 ? (
               <div className="max-h-[300px] overflow-auto">
                 {projects.map(project => (
                   <button
                     key={project.name}
                     onClick={() => {
-                      onSelectProject(project.name)
-                      setIsOpen(false)
+                      if (project.wizard_incomplete && onIncompleteProjectClick) {
+                        onIncompleteProjectClick(project)
+                        setIsOpen(false)
+                      } else {
+                        onSelectProject(project.name)
+                        setIsOpen(false)
+                      }
                     }}
-                    className={`w-full neo-dropdown-item flex items-center justify-between ${
-                      project.name === selectedProject
-                        ? 'bg-[var(--color-neo-pending)]'
-                        : ''
+                    className={`dropdown-item flex items-center justify-between ${
+                      project.name === selectedProject ? 'active' : ''
                     }`}
                   >
                     <span className="flex items-center gap-2">
-                      <FolderOpen size={16} />
+                      <FolderOpen size={14} className="text-[var(--color-text-secondary)]" />
                       {project.name}
+                      {project.wizard_incomplete && (
+                        <span title="Setup incomplete">
+                          <AlertCircle size={14} className="text-[var(--color-warning)]" />
+                        </span>
+                      )}
                     </span>
                     {project.stats.total > 0 && (
-                      <span className="text-sm font-mono">
+                      <span className="text-sm font-mono text-[var(--color-text-muted)]">
                         {project.stats.passing}/{project.stats.total}
                       </span>
                     )}
@@ -95,13 +108,13 @@ export function ProjectSelector({
                 ))}
               </div>
             ) : (
-              <div className="p-4 text-center text-[var(--color-neo-text-secondary)]">
+              <div className="p-4 text-center text-[var(--color-text-muted)] text-sm">
                 No projects yet
               </div>
             )}
 
             {/* Divider */}
-            <div className="border-t-3 border-[var(--color-neo-border)]" />
+            <div className="divider" />
 
             {/* Create New */}
             <button
@@ -109,9 +122,9 @@ export function ProjectSelector({
                 setShowNewProjectModal(true)
                 setIsOpen(false)
               }}
-              className="w-full neo-dropdown-item flex items-center gap-2 font-bold"
+              className="dropdown-item flex items-center gap-2 font-medium text-[var(--color-accent)]"
             >
-              <Plus size={16} />
+              <Plus size={14} />
               New Project
             </button>
           </div>

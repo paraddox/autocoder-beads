@@ -16,8 +16,10 @@ import { DebugLogViewer } from './components/DebugLogViewer'
 import { AgentThought } from './components/AgentThought'
 import { AssistantFAB } from './components/AssistantFAB'
 import { AssistantPanel } from './components/AssistantPanel'
+import { IncompleteProjectModal } from './components/IncompleteProjectModal'
+import { NewProjectModal } from './components/NewProjectModal'
 import { Plus, Loader2 } from 'lucide-react'
-import type { Feature } from './lib/types'
+import type { Feature, ProjectSummary, WizardStatus } from './lib/types'
 
 function App() {
   // Initialize selected project from localStorage
@@ -34,6 +36,14 @@ function App() {
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugPanelHeight, setDebugPanelHeight] = useState(288) // Default height
   const [assistantOpen, setAssistantOpen] = useState(false)
+
+  // Incomplete project wizard resume state
+  const [incompleteProject, setIncompleteProject] = useState<ProjectSummary | null>(null)
+  const [showResumeWizard, setShowResumeWizard] = useState(false)
+  const [resumeWizardState, setResumeWizardState] = useState<{
+    projectName: string
+    wizardStatus: WizardStatus
+  } | null>(null)
 
   const { data: projects, isLoading: projectsLoading } = useProjects()
   const { data: features } = useFeatures(selectedProject)
@@ -58,6 +68,38 @@ function App() {
     } catch {
       // localStorage not available
     }
+  }, [])
+
+  // Handle click on incomplete project in selector
+  const handleIncompleteProjectClick = useCallback((project: ProjectSummary) => {
+    setIncompleteProject(project)
+  }, [])
+
+  // Handle resume from incomplete project modal
+  const handleResumeWizard = useCallback((projectName: string, wizardStatus: WizardStatus) => {
+    setIncompleteProject(null)
+    setResumeWizardState({ projectName, wizardStatus })
+    setShowResumeWizard(true)
+  }, [])
+
+  // Handle start fresh from incomplete project modal
+  const handleStartFresh = useCallback((projectName: string) => {
+    setIncompleteProject(null)
+    setResumeWizardState({ projectName, wizardStatus: { step: 'method', spec_method: null, started_at: new Date().toISOString(), chat_messages: [] } })
+    setShowResumeWizard(true)
+  }, [])
+
+  // Handle resume wizard completion
+  const handleResumeWizardComplete = useCallback((projectName: string) => {
+    setShowResumeWizard(false)
+    setResumeWizardState(null)
+    handleSelectProject(projectName)
+  }, [handleSelectProject])
+
+  // Handle resume wizard close (without completing)
+  const handleResumeWizardClose = useCallback(() => {
+    setShowResumeWizard(false)
+    setResumeWizardState(null)
   }, [])
 
   // Validate stored project exists (clear if project was deleted)
@@ -127,22 +169,23 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-neo-bg)]">
+    <div className="min-h-screen bg-[var(--color-bg)]">
       {/* Header */}
-      <header className="bg-[var(--color-neo-text)] text-white border-b-4 border-[var(--color-neo-border)]">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+      <header className="bg-[var(--color-bg-elevated)] border-b border-[var(--color-border)]">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             {/* Logo and Title */}
-            <h1 className="font-display text-2xl font-bold tracking-tight uppercase">
+            <h1 className="font-display text-xl font-medium tracking-tight text-[var(--color-text)]">
               AutoCoder
             </h1>
 
             {/* Controls */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <ProjectSelector
                 projects={projects ?? []}
                 selectedProject={selectedProject}
                 onSelectProject={handleSelectProject}
+                onIncompleteProjectClick={handleIncompleteProjectClick}
                 isLoading={projectsLoading}
               />
 
@@ -150,12 +193,12 @@ function App() {
                 <>
                   <button
                     onClick={() => setShowAddFeature(true)}
-                    className="neo-btn neo-btn-primary text-sm"
+                    className="btn btn-primary text-sm"
                     title="Press N"
                   >
-                    <Plus size={18} />
+                    <Plus size={16} />
                     Add Feature
-                    <kbd className="ml-1.5 px-1.5 py-0.5 text-xs bg-black/20 rounded font-mono">
+                    <kbd className="ml-1.5 px-1.5 py-0.5 text-xs bg-white/20 rounded-sm font-mono">
                       N
                     </kbd>
                   </button>
@@ -174,20 +217,20 @@ function App() {
 
       {/* Main Content */}
       <main
-        className="max-w-7xl mx-auto px-4 py-8"
+        className="max-w-7xl mx-auto px-6 py-8"
         style={{ paddingBottom: debugOpen ? debugPanelHeight + 32 : undefined }}
       >
         {!selectedProject ? (
-          <div className="neo-empty-state mt-12">
-            <h2 className="font-display text-2xl font-bold mb-2">
+          <div className="empty-state mt-12">
+            <h2 className="font-display text-2xl font-medium mb-3 text-[var(--color-text)]">
               Welcome to AutoCoder
             </h2>
-            <p className="text-[var(--color-neo-text-secondary)] mb-4">
+            <p className="text-[var(--color-text-secondary)]">
               Select a project from the dropdown above or create a new one to get started.
             </p>
           </div>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-6">
             {/* Progress Dashboard */}
             <ProgressDashboard
               passing={progress.passing}
@@ -208,12 +251,12 @@ function App() {
              features.in_progress.length === 0 &&
              features.done.length === 0 &&
              wsState.agentStatus === 'running' && (
-              <div className="neo-card p-8 text-center">
-                <Loader2 size={32} className="animate-spin mx-auto mb-4 text-[var(--color-neo-progress)]" />
-                <h3 className="font-display font-bold text-xl mb-2">
+              <div className="card p-8 text-center">
+                <Loader2 size={28} className="animate-spin mx-auto mb-4 text-[var(--color-progress)]" />
+                <h3 className="font-display font-medium text-lg mb-2 text-[var(--color-text)]">
                   Initializing Features...
                 </h3>
-                <p className="text-[var(--color-neo-text-secondary)]">
+                <p className="text-[var(--color-text-secondary)] text-sm">
                   The agent is reading your spec and creating features. This may take a moment.
                 </p>
               </div>
@@ -270,6 +313,24 @@ function App() {
           />
         </>
       )}
+
+      {/* Incomplete Project Modal */}
+      <IncompleteProjectModal
+        isOpen={incompleteProject !== null}
+        project={incompleteProject}
+        onClose={() => setIncompleteProject(null)}
+        onResume={handleResumeWizard}
+        onStartFresh={handleStartFresh}
+      />
+
+      {/* Resume Wizard Modal */}
+      <NewProjectModal
+        isOpen={showResumeWizard}
+        onClose={handleResumeWizardClose}
+        onProjectCreated={handleResumeWizardComplete}
+        resumeProjectName={resumeWizardState?.projectName}
+        resumeState={resumeWizardState?.wizardStatus}
+      />
     </div>
   )
 }
