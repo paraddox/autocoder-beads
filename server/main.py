@@ -6,11 +6,16 @@ Main entry point for the Autonomous Coding UI server.
 Provides REST API, WebSocket, and static file serving.
 """
 
+import os
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
+
+# Environment configuration for Docker support
+ALLOW_EXTERNAL_ACCESS = os.getenv("ALLOW_EXTERNAL_ACCESS", "false").lower() == "true"
+CORS_ORIGINS_ENV = os.getenv("CORS_ORIGINS", "")
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -51,15 +56,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS - allow only localhost origins for security
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+# CORS configuration - configurable via CORS_ORIGINS env var
+# Use "*" for CORS_ORIGINS to allow all origins (useful in Docker)
+if CORS_ORIGINS_ENV == "*":
+    cors_origins = ["*"]
+elif CORS_ORIGINS_ENV:
+    cors_origins = [origin.strip() for origin in CORS_ORIGINS_ENV.split(",")]
+else:
+    cors_origins = [
         "http://localhost:5173",      # Vite dev server
         "http://127.0.0.1:5173",
         "http://localhost:8888",      # Production
         "http://127.0.0.1:8888",
-    ],
+    ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -72,7 +85,11 @@ app.add_middleware(
 
 @app.middleware("http")
 async def require_localhost(request: Request, call_next):
-    """Only allow requests from localhost."""
+    """Only allow requests from localhost (unless ALLOW_EXTERNAL_ACCESS is set)."""
+    # Skip localhost check if external access is enabled (for Docker)
+    if ALLOW_EXTERNAL_ACCESS:
+        return await call_next(request)
+
     client_host = request.client.host if request.client else None
 
     # Allow localhost connections
@@ -174,9 +191,11 @@ if UI_DIST_DIR.exists():
 
 if __name__ == "__main__":
     import uvicorn
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "8888"))
     uvicorn.run(
         "server.main:app",
-        host="127.0.0.1",  # Localhost only for security
-        port=8888,
+        host=host,
+        port=port,
         reload=True,
     )

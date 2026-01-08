@@ -73,12 +73,19 @@ _SessionLocal = None
 
 def get_config_dir() -> Path:
     """
-    Get the config directory: ~/.autocoder/
+    Get the config directory.
+
+    Uses AUTOCODER_DATA_DIR environment variable if set (for Docker),
+    otherwise defaults to ~/.autocoder/
 
     Returns:
-        Path to ~/.autocoder/ (created if it doesn't exist)
+        Path to config directory (created if it doesn't exist)
     """
-    config_dir = Path.home() / ".autocoder"
+    data_dir = os.getenv("AUTOCODER_DATA_DIR")
+    if data_dir:
+        config_dir = Path(data_dir) / "autocoder"
+    else:
+        config_dir = Path.home() / ".autocoder"
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
 
