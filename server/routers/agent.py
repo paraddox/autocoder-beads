@@ -7,6 +7,7 @@ Uses ContainerManager for per-project Docker containers.
 """
 
 import re
+import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -18,15 +19,18 @@ from ..services.container_manager import (
     check_image_exists,
 )
 
+# Add root to path for imports
+_root = Path(__file__).parent.parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+
+from registry import get_project_path
+from progress import has_features
+from prompts import get_initializer_prompt, get_coding_prompt, get_coding_prompt_yolo
+
 
 def _get_project_path(project_name: str) -> Path:
     """Get project path from registry."""
-    import sys
-    root = Path(__file__).parent.parent.parent
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
-    from registry import get_project_path
     return get_project_path(project_name)
 
 
@@ -77,17 +81,35 @@ async def get_agent_status(project_name: str):
     )
 
 
+def _get_agent_prompt(project_dir: Path, yolo_mode: bool = False) -> str:
+    """
+    Determine the appropriate prompt based on project state.
+
+    - If no features exist: use initializer prompt
+    - If features exist: use coding prompt (or yolo variant)
+    """
+    if has_features(project_dir):
+        # Features exist, continue coding
+        if yolo_mode:
+            return get_coding_prompt_yolo(project_dir)
+        return get_coding_prompt(project_dir)
+    else:
+        # No features, initialize from spec
+        return get_initializer_prompt(project_dir)
+
+
 @router.post("/start", response_model=AgentActionResponse)
 async def start_agent(
     project_name: str,
     request: AgentStartRequest = AgentStartRequest(),
 ):
     """
-    Start the container for a project and optionally send an instruction.
+    Start the container for a project and send the appropriate instruction.
 
     - Creates container if not exists
     - Starts container if stopped
-    - Sends instruction to Claude Code if provided
+    - Automatically determines if this is initialization or continuation
+    - Sends the appropriate prompt (initializer or coding)
     """
     # Check Docker availability
     if not check_docker_available():
@@ -103,7 +125,23 @@ async def start_agent(
         )
 
     manager = get_project_container(project_name)
-    success, message = await manager.start(instruction=request.instruction)
+    project_dir = _get_project_path(project_name)
+
+    # Determine the instruction to send
+    instruction = request.instruction
+    if not instruction:
+        # Auto-determine based on project state
+        try:
+            instruction = _get_agent_prompt(project_dir, request.yolo_mode)
+            is_init = not has_features(project_dir)
+            print(f"[Agent] Auto-selected {'initializer' if is_init else 'coding'} prompt for {project_name}")
+        except FileNotFoundError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not load prompt: {e}"
+            )
+
+    success, message = await manager.start(instruction=instruction)
 
     return AgentActionResponse(
         success=success,

@@ -30,9 +30,11 @@ export function useProjectWebSocket(projectName: string | null) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
   const reconnectAttempts = useRef(0)
+  const hasConnectedRef = useRef(false) // Track if we've ever successfully connected
+  const shouldReconnectRef = useRef(true) // Whether to auto-reconnect
 
   const connect = useCallback(() => {
-    if (!projectName) return
+    if (!projectName || !shouldReconnectRef.current) return
 
     // Build WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -46,6 +48,7 @@ export function useProjectWebSocket(projectName: string | null) {
       ws.onopen = () => {
         setState(prev => ({ ...prev, isConnected: true }))
         reconnectAttempts.current = 0
+        hasConnectedRef.current = true
       }
 
       ws.onmessage = (event) => {
@@ -99,7 +102,22 @@ export function useProjectWebSocket(projectName: string | null) {
         setState(prev => ({ ...prev, isConnected: false }))
         wsRef.current = null
 
-        // Exponential backoff reconnection
+        // Only reconnect if we've successfully connected before
+        // This prevents infinite reconnect loops for deleted/invalid projects
+        if (!hasConnectedRef.current) {
+          console.log(`WebSocket: Initial connection to ${projectName} failed, not reconnecting`)
+          shouldReconnectRef.current = false
+          return
+        }
+
+        if (!shouldReconnectRef.current) return
+
+        // Exponential backoff reconnection (max 5 attempts)
+        if (reconnectAttempts.current >= 5) {
+          console.log(`WebSocket: Max reconnection attempts reached for ${projectName}`)
+          return
+        }
+
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000)
         reconnectAttempts.current++
 
@@ -125,6 +143,11 @@ export function useProjectWebSocket(projectName: string | null) {
 
   // Connect when project changes
   useEffect(() => {
+    // Reset refs for new project
+    hasConnectedRef.current = false
+    shouldReconnectRef.current = true
+    reconnectAttempts.current = 0
+
     if (!projectName) {
       // Disconnect if no project
       if (wsRef.current) {
@@ -141,6 +164,7 @@ export function useProjectWebSocket(projectName: string | null) {
 
     return () => {
       clearInterval(pingInterval)
+      shouldReconnectRef.current = false // Prevent reconnect on cleanup
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
       }
