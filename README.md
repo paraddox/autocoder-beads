@@ -86,6 +86,51 @@ For new projects, you can use the built-in `/create-spec` command to interactive
 
 **Interrupted Setup:** If you close the browser during project setup (before completing the spec), you can resume where you left off. Incomplete projects show a warning icon in the project selector, and clicking them offers options to resume or start fresh.
 
+### Option 3: Docker
+
+Run AutoCoder in a container with all dependencies pre-installed.
+
+**Build the image:**
+```bash
+docker build -t autocoder .
+```
+
+**Run with API key:**
+```bash
+ANTHROPIC_API_KEY=sk-... ./docker-run-apikey.sh
+```
+
+**Run with Claude credentials:**
+```bash
+# Requires prior `claude login` on host
+./docker-run-creds.sh
+```
+
+**Using docker-compose:**
+```bash
+# Set API key in environment or .env file
+ANTHROPIC_API_KEY=sk-... docker compose up -d
+```
+
+**Test the build:**
+```bash
+./docker-test.sh
+```
+
+The UI will be available at `http://localhost:8888`.
+
+#### Data Persistence
+
+All data is stored in a single `./data` directory:
+```
+./data/
+  autocoder/        # Project registry
+  claude/           # Claude credentials (if using docker-run-creds.sh)
+  projects/         # Your projects (create projects here to persist them)
+```
+
+**Important:** When creating projects in the Docker UI, select `/data/projects/` as the parent directory to ensure your projects persist across container restarts.
+
 ---
 
 ## How It Works
@@ -137,6 +182,12 @@ autonomous-coding/
 ├── start.sh                  # macOS/Linux CLI start script
 ├── start_ui.bat              # Windows Web UI start script
 ├── start_ui.sh               # macOS/Linux Web UI start script
+├── Dockerfile                # Docker image build
+├── docker-compose.yml        # Docker Compose configuration
+├── docker-entrypoint.sh      # Container entrypoint script
+├── docker-run-apikey.sh      # Run with API key
+├── docker-run-creds.sh       # Run with Claude credentials
+├── docker-test.sh            # Build and test Docker image
 ├── start.py                  # CLI menu and project management
 ├── start_ui.py               # Web UI backend (FastAPI server launcher)
 ├── autonomous_agent_demo.py  # Agent entry point
@@ -252,7 +303,7 @@ npm run build    # Builds to ui/dist/
 
 - React 18 with TypeScript
 - TanStack Query for data fetching
-- Tailwind CSS v4 with neobrutalism design
+- Tailwind CSS v4 with soft editorial design
 - Radix UI components
 - WebSocket for real-time updates
 
