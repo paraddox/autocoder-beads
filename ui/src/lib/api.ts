@@ -61,8 +61,9 @@ export async function getProject(name: string): Promise<ProjectDetail> {
   return fetchJSON(`/projects/${encodeURIComponent(name)}`)
 }
 
-export async function deleteProject(name: string): Promise<void> {
-  await fetchJSON(`/projects/${encodeURIComponent(name)}`, {
+export async function deleteProject(name: string, deleteFiles: boolean = false): Promise<void> {
+  const params = deleteFiles ? '?delete_files=true' : ''
+  await fetchJSON(`/projects/${encodeURIComponent(name)}${params}`, {
     method: 'DELETE',
   })
 }

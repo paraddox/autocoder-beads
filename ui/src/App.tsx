@@ -18,7 +18,8 @@ import { AssistantFAB } from './components/AssistantFAB'
 import { AssistantPanel } from './components/AssistantPanel'
 import { IncompleteProjectModal } from './components/IncompleteProjectModal'
 import { NewProjectModal } from './components/NewProjectModal'
-import { Plus, Loader2 } from 'lucide-react'
+import { DeleteProjectModal } from './components/DeleteProjectModal'
+import { Plus, Loader2, Trash2 } from 'lucide-react'
 import type { Feature, ProjectSummary, WizardStatus } from './lib/types'
 
 function App() {
@@ -45,7 +46,10 @@ function App() {
     wizardStatus: WizardStatus
   } | null>(null)
 
-  const { data: projects, isLoading: projectsLoading } = useProjects()
+  // Delete project modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+
+  const { data: projects, isLoading: projectsLoading, refetch: refetchProjects } = useProjects()
   const { data: features } = useFeatures(selectedProject)
   const { data: agentStatusData } = useAgentStatus(selectedProject)
   const wsState = useProjectWebSocket(selectedProject)
@@ -101,6 +105,13 @@ function App() {
     setShowResumeWizard(false)
     setResumeWizardState(null)
   }, [])
+
+  // Handle project deletion
+  const handleProjectDeleted = useCallback(() => {
+    setShowDeleteModal(false)
+    handleSelectProject(null)
+    refetchProjects()
+  }, [handleSelectProject, refetchProjects])
 
   // Validate stored project exists (clear if project was deleted)
   useEffect(() => {
@@ -208,6 +219,14 @@ function App() {
                     status={wsState.agentStatus}
                     yoloMode={agentStatusData?.yolo_mode ?? false}
                   />
+
+                  <button
+                    onClick={() => setShowDeleteModal(true)}
+                    className="btn btn-ghost text-[var(--color-text-secondary)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)]"
+                    title="Delete project"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </>
               )}
             </div>
@@ -330,6 +349,14 @@ function App() {
         onProjectCreated={handleResumeWizardComplete}
         resumeProjectName={resumeWizardState?.projectName}
         resumeState={resumeWizardState?.wizardStatus}
+      />
+
+      {/* Delete Project Modal */}
+      <DeleteProjectModal
+        isOpen={showDeleteModal}
+        project={projects?.find(p => p.name === selectedProject) ?? null}
+        onClose={() => setShowDeleteModal(false)}
+        onDeleted={handleProjectDeleted}
       />
     </div>
   )
