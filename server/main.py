@@ -6,6 +6,7 @@ Main entry point for the Autonomous Coding UI server.
 Provides REST API, WebSocket, and static file serving.
 """
 
+import asyncio
 import os
 import shutil
 from contextlib import asynccontextmanager
@@ -30,21 +31,49 @@ from .routers import (
 )
 from .schemas import SetupStatus
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
-from .services.process_manager import cleanup_all_managers
+from .services.container_manager import cleanup_all_containers, cleanup_idle_containers
 from .websocket import project_websocket
+
+# Idle container check interval (seconds)
+IDLE_CHECK_INTERVAL = 60
 
 # Paths
 ROOT_DIR = Path(__file__).parent.parent
 UI_DIST_DIR = ROOT_DIR / "ui" / "dist"
 
 
+async def idle_container_monitor():
+    """Background task to stop idle containers."""
+    while True:
+        try:
+            await asyncio.sleep(IDLE_CHECK_INTERVAL)
+            stopped = await cleanup_idle_containers()
+            if stopped:
+                import logging
+                logging.getLogger(__name__).info(f"Stopped idle containers: {stopped}")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Idle monitor error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown."""
-    # Startup
+    # Startup - start idle container monitor
+    idle_monitor_task = asyncio.create_task(idle_container_monitor())
+
     yield
-    # Shutdown - cleanup all running agents and assistant sessions
-    await cleanup_all_managers()
+
+    # Shutdown - cleanup all running agents, containers, and sessions
+    idle_monitor_task.cancel()
+    try:
+        await idle_monitor_task
+    except asyncio.CancelledError:
+        pass
+
+    await cleanup_all_containers()
     await cleanup_assistant_sessions()
 
 

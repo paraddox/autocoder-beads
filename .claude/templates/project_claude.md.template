@@ -1,0 +1,71 @@
+# {project_name}
+
+This project uses **beads** for feature/issue tracking. All features are stored in `.beads/` directory.
+
+## Workflow
+
+### Starting Work
+
+1. Check what's ready to work on:
+   ```bash
+   bd ready
+   ```
+
+2. Pick a feature and view details:
+   ```bash
+   bd show <feature-id>
+   ```
+
+3. Claim the feature:
+   ```bash
+   bd update <feature-id> --status=in_progress
+   ```
+
+### Implementing Features
+
+1. Read the feature description and requirements
+2. Implement the feature following project conventions
+3. Run linting/type-checking to verify code quality
+4. Test the implementation
+
+### Completing Features
+
+When a feature is fully implemented and tested:
+```bash
+bd close <feature-id>
+```
+
+Check overall progress:
+```bash
+bd stats
+```
+
+### If Blocked
+
+If you encounter a blocker:
+```bash
+bd update <feature-id> --status=blocked
+bd comments <feature-id> add "Blocked because: <reason>"
+```
+
+Then move to the next available feature with `bd ready`.
+
+## Beads Quick Reference
+
+| Command | Description |
+|---------|-------------|
+| `bd ready` | List features ready to work on |
+| `bd show <id>` | View feature details |
+| `bd list --status=open` | List all open features |
+| `bd list --status=in_progress` | List features being worked on |
+| `bd update <id> --status=in_progress` | Claim a feature |
+| `bd close <id>` | Mark feature as complete |
+| `bd stats` | Show progress statistics |
+| `bd comments <id> add "..."` | Add a comment to a feature |
+
+## Project Guidelines
+
+- Follow existing code patterns and conventions
+- Run `npm run lint` or equivalent before marking features complete
+- Commit changes with descriptive messages
+- One feature at a time - complete or skip before moving on

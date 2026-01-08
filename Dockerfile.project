@@ -1,0 +1,46 @@
+# =============================================================================
+# Project Container Dockerfile
+# =============================================================================
+# Minimal container for running Claude Code on a single project.
+# No Python backend, no MCP servers - just Claude Code + beads CLI.
+#
+# Usage:
+#   docker build -f Dockerfile.project -t autocoder-project .
+#   docker run -d --name autocoder-{project} -v /path/to/project:/project autocoder-project
+
+FROM ubuntu:24.04
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install essentials
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    wget \
+    ca-certificates \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI globally
+RUN npm install -g @anthropic-ai/claude-code
+
+# Install beads CLI
+RUN curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash \
+    && mv /root/.local/bin/bd /usr/local/bin/bd 2>/dev/null || true
+
+# Configure git for beads operations
+RUN git config --global user.email "docker@autocoder.local" \
+    && git config --global user.name "AutoCoder Docker" \
+    && git config --global init.defaultBranch main
+
+# Create directory for Claude credentials (mounted at runtime)
+RUN mkdir -p /root/.claude
+
+# Working directory is the mounted project
+WORKDIR /project
+
+# Default command - keep container running for exec commands
+# The host will use `docker exec` to run claude commands
+CMD ["tail", "-f", "/dev/null"]

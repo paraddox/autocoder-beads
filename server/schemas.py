@@ -118,14 +118,18 @@ class FeatureListResponse(BaseModel):
 
 class AgentStartRequest(BaseModel):
     """Request schema for starting the agent."""
-    yolo_mode: bool = False
+    instruction: str | None = None  # Instruction to send to Claude Code
+    yolo_mode: bool = False  # Kept for backwards compatibility
 
 
 class AgentStatus(BaseModel):
-    """Current agent status."""
-    status: Literal["stopped", "running", "paused", "crashed"]
-    pid: int | None = None
+    """Current agent/container status."""
+    status: Literal["not_created", "stopped", "running", "paused", "crashed"]
+    container_name: str | None = None
     started_at: datetime | None = None
+    idle_seconds: int = 0
+    # Legacy fields for backwards compatibility
+    pid: int | None = None
     yolo_mode: bool = False
 
 

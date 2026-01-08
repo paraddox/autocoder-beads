@@ -15,7 +15,7 @@ from typing import Set
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from .services.process_manager import get_manager
+from .services.container_manager import get_container_manager
 
 # Lazy imports
 _count_passing_tests = None
@@ -100,9 +100,6 @@ class ConnectionManager:
 # Global connection manager
 manager = ConnectionManager()
 
-# Root directory
-ROOT_DIR = Path(__file__).parent.parent
-
 
 def validate_project_name(name: str) -> bool:
     """Validate project name to prevent path traversal."""
@@ -167,8 +164,8 @@ async def project_websocket(websocket: WebSocket, project_name: str):
 
     await manager.connect(websocket, project_name)
 
-    # Get agent manager and register callbacks
-    agent_manager = get_manager(project_name, project_dir, ROOT_DIR)
+    # Get container manager and register callbacks
+    container_manager = get_container_manager(project_name, project_dir)
 
     async def on_output(line: str):
         """Handle agent output - broadcast to this WebSocket."""
@@ -192,8 +189,8 @@ async def project_websocket(websocket: WebSocket, project_name: str):
             pass  # Connection may be closed
 
     # Register callbacks
-    agent_manager.add_output_callback(on_output)
-    agent_manager.add_status_callback(on_status_change)
+    container_manager.add_output_callback(on_output)
+    container_manager.add_status_callback(on_status_change)
 
     # Start progress polling task
     poll_task = asyncio.create_task(poll_progress(websocket, project_name, project_dir))
@@ -202,7 +199,7 @@ async def project_websocket(websocket: WebSocket, project_name: str):
         # Send initial status
         await websocket.send_json({
             "type": "agent_status",
-            "status": agent_manager.status,
+            "status": container_manager.status,
         })
 
         # Send initial progress
@@ -245,8 +242,8 @@ async def project_websocket(websocket: WebSocket, project_name: str):
             pass
 
         # Unregister callbacks
-        agent_manager.remove_output_callback(on_output)
-        agent_manager.remove_status_callback(on_status_change)
+        container_manager.remove_output_callback(on_output)
+        container_manager.remove_status_callback(on_status_change)
 
         # Disconnect from manager
         await manager.disconnect(websocket, project_name)

@@ -2,9 +2,9 @@
 Backend Services
 ================
 
-Business logic and process management services.
+Business logic and container management services.
 """
 
-from .process_manager import AgentProcessManager
+from .container_manager import ContainerManager
 
-__all__ = ["AgentProcessManager"]
+__all__ = ["ContainerManager"]

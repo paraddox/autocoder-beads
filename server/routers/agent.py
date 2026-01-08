@@ -2,8 +2,8 @@
 Agent Router
 ============
 
-API endpoints for agent control (start/stop/pause/resume).
-Uses project registry for path lookups.
+API endpoints for agent/container control (start/stop/send instruction).
+Uses ContainerManager for per-project Docker containers.
 """
 
 import re
@@ -12,7 +12,11 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from ..schemas import AgentActionResponse, AgentStartRequest, AgentStatus
-from ..services.process_manager import get_manager
+from ..services.container_manager import (
+    get_container_manager,
+    check_docker_available,
+    check_image_exists,
+)
 
 
 def _get_project_path(project_name: str) -> Path:
@@ -28,9 +32,6 @@ def _get_project_path(project_name: str) -> Path:
 
 router = APIRouter(prefix="/api/projects/{project_name}/agent", tags=["agent"])
 
-# Root directory for process manager
-ROOT_DIR = Path(__file__).parent.parent.parent
-
 
 def validate_project_name(name: str) -> str:
     """Validate and sanitize project name to prevent path traversal."""
@@ -42,33 +43,37 @@ def validate_project_name(name: str) -> str:
     return name
 
 
-def get_project_manager(project_name: str):
-    """Get the process manager for a project."""
+def get_project_container(project_name: str):
+    """Get the container manager for a project."""
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
 
     if not project_dir:
-        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found in registry")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project '{project_name}' not found in registry"
+        )
 
     if not project_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Project directory not found: {project_dir}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project directory not found: {project_dir}"
+        )
 
-    return get_manager(project_name, project_dir, ROOT_DIR)
+    return get_container_manager(project_name, project_dir)
 
 
 @router.get("/status", response_model=AgentStatus)
 async def get_agent_status(project_name: str):
-    """Get the current status of the agent for a project."""
-    manager = get_project_manager(project_name)
-
-    # Run healthcheck to detect crashed processes
-    await manager.healthcheck()
+    """Get the current status of the container for a project."""
+    manager = get_project_container(project_name)
+    status_dict = manager.get_status_dict()
 
     return AgentStatus(
-        status=manager.status,
-        pid=manager.pid,
+        status=status_dict["status"],
+        container_name=status_dict["container_name"],
         started_at=manager.started_at,
-        yolo_mode=manager.yolo_mode,
+        idle_seconds=status_dict["idle_seconds"],
     )
 
 
@@ -77,10 +82,28 @@ async def start_agent(
     project_name: str,
     request: AgentStartRequest = AgentStartRequest(),
 ):
-    """Start the agent for a project."""
-    manager = get_project_manager(project_name)
+    """
+    Start the container for a project and optionally send an instruction.
 
-    success, message = await manager.start(yolo_mode=request.yolo_mode)
+    - Creates container if not exists
+    - Starts container if stopped
+    - Sends instruction to Claude Code if provided
+    """
+    # Check Docker availability
+    if not check_docker_available():
+        raise HTTPException(
+            status_code=503,
+            detail="Docker is not available. Please ensure Docker is installed and running."
+        )
+
+    if not check_image_exists():
+        raise HTTPException(
+            status_code=503,
+            detail="Container image 'autocoder-project' not found. Run: docker build -f Dockerfile.project -t autocoder-project ."
+        )
+
+    manager = get_project_container(project_name)
+    success, message = await manager.start(instruction=request.instruction)
 
     return AgentActionResponse(
         success=success,
@@ -91,9 +114,8 @@ async def start_agent(
 
 @router.post("/stop", response_model=AgentActionResponse)
 async def stop_agent(project_name: str):
-    """Stop the agent for a project."""
-    manager = get_project_manager(project_name)
-
+    """Stop the container for a project (does not remove it)."""
+    manager = get_project_container(project_name)
     success, message = await manager.stop()
 
     return AgentActionResponse(
@@ -103,12 +125,28 @@ async def stop_agent(project_name: str):
     )
 
 
-@router.post("/pause", response_model=AgentActionResponse)
-async def pause_agent(project_name: str):
-    """Pause the agent for a project."""
-    manager = get_project_manager(project_name)
+@router.post("/instruction", response_model=AgentActionResponse)
+async def send_instruction(project_name: str, request: AgentStartRequest):
+    """
+    Send an instruction to the running container.
 
-    success, message = await manager.pause()
+    Container must already be running.
+    """
+    if not request.instruction:
+        raise HTTPException(
+            status_code=400,
+            detail="instruction is required"
+        )
+
+    manager = get_project_container(project_name)
+
+    if manager.status != "running":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Container is not running (status: {manager.status})"
+        )
+
+    success, message = await manager.send_instruction(request.instruction)
 
     return AgentActionResponse(
         success=success,
@@ -117,15 +155,41 @@ async def pause_agent(project_name: str):
     )
 
 
-@router.post("/resume", response_model=AgentActionResponse)
-async def resume_agent(project_name: str):
-    """Resume a paused agent."""
-    manager = get_project_manager(project_name)
-
-    success, message = await manager.resume()
+@router.delete("/container", response_model=AgentActionResponse)
+async def remove_container(project_name: str):
+    """Remove the container completely (for cleanup)."""
+    manager = get_project_container(project_name)
+    success, message = await manager.remove()
 
     return AgentActionResponse(
         success=success,
         status=manager.status,
         message=message,
+    )
+
+
+# Legacy endpoints for backwards compatibility
+@router.post("/pause", response_model=AgentActionResponse)
+async def pause_agent(project_name: str):
+    """
+    Pause endpoint (deprecated).
+
+    Containers don't support pause - use stop instead.
+    """
+    raise HTTPException(
+        status_code=400,
+        detail="Pause is not supported for containers. Use stop instead."
+    )
+
+
+@router.post("/resume", response_model=AgentActionResponse)
+async def resume_agent(project_name: str):
+    """
+    Resume endpoint (deprecated).
+
+    Use start to restart a stopped container.
+    """
+    raise HTTPException(
+        status_code=400,
+        detail="Resume is not supported for containers. Use start instead."
     )
