@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 CONTAINER_IMAGE = "autocoder-project"
 
 # Idle timeout in minutes
-IDLE_TIMEOUT_MINUTES = 15
+IDLE_TIMEOUT_MINUTES = 60
 
 # Patterns for sensitive data that should be redacted from output
 SENSITIVE_PATTERNS = [
