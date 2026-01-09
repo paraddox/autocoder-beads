@@ -82,18 +82,19 @@ Pick 3 features (skip the one you just closed) and quickly verify they still wor
 - Spend MAX 5 minutes total on verification
 - Do NOT get stuck in verification mode
 
-### STEP 5: REPEAT OR END SESSION
+### STEP 5: END SESSION
 
-If time remains:
-- Go back to Step 3 and implement another feature
+After completing ONE feature implementation + verification:
 
-Before ending:
 ```bash
-git add . && git commit -m "Session progress"
+git add . && git commit -m "Implement: <feature name>"
 bd sync
 ```
 
 Update `claude-progress.txt` with what you accomplished.
+
+**IMPORTANT: Exit now. Do NOT start another feature.**
+The system will automatically start a fresh session for the next task.
 
 ---
 

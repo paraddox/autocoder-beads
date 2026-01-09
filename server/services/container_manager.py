@@ -7,6 +7,7 @@ Each project gets its own sandboxed container.
 """
 
 import asyncio
+import json
 import logging
 import re
 import subprocess
@@ -52,6 +53,7 @@ class ContainerManager:
     - not_created: Project exists but container never started
     - running: Container is running, Claude Code is active
     - stopped: Container stopped (idle timeout or manual), can restart quickly
+    - completed: All features done, container stopped
     """
 
     def __init__(
@@ -73,13 +75,15 @@ class ContainerManager:
         self.claude_credentials_dir = claude_credentials_dir or Path.home() / ".claude"
         self.container_name = f"autocoder-{project_name}"
 
-        self._status: Literal["not_created", "running", "stopped"] = "not_created"
+        self._status: Literal["not_created", "running", "stopped", "completed"] = "not_created"
         self.started_at: datetime | None = None
         self.last_activity: datetime | None = None
         self._log_task: asyncio.Task | None = None
 
         # Track if user started this container (for auto-restart monitoring)
         self._user_started: bool = False
+        # Flag to prevent health monitor conflicts during restart
+        self._restarting: bool = False
 
         # Callbacks for WebSocket notifications
         self._output_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
@@ -110,11 +114,11 @@ class ContainerManager:
             self._status = "not_created"
 
     @property
-    def status(self) -> Literal["not_created", "running", "stopped"]:
+    def status(self) -> Literal["not_created", "running", "stopped", "completed"]:
         return self._status
 
     @status.setter
-    def status(self, value: Literal["not_created", "running", "stopped"]):
+    def status(self, value: Literal["not_created", "running", "stopped", "completed"]):
         old_status = self._status
         self._status = value
         if old_status != value:
@@ -196,6 +200,26 @@ class ContainerManager:
     def user_started(self) -> bool:
         """Whether the user explicitly started this container."""
         return self._user_started
+
+    def has_open_features(self) -> bool:
+        """Check if project has open features remaining."""
+        issues_file = self.project_dir / ".beads" / "issues.jsonl"
+        if not issues_file.exists():
+            return False
+        try:
+            open_count = 0
+            with open(issues_file, "r") as f:
+                for line in f:
+                    try:
+                        issue = json.loads(line.strip())
+                        if issue.get("status") in ("open", "in_progress"):
+                            open_count += 1
+                    except json.JSONDecodeError:
+                        continue
+            return open_count > 0
+        except Exception as e:
+            logger.warning(f"Failed to check open features: {e}")
+            return False
 
     async def _broadcast_output(self, line: str) -> None:
         """Broadcast output line to all registered callbacks."""
@@ -399,6 +423,18 @@ class ContainerManager:
 
             await process.wait()
 
+            # Auto-restart logic for fresh context per task
+            if self._user_started and self.has_open_features():
+                logger.info(f"Task complete in {self.container_name}, restarting for next feature...")
+                await self._broadcast_output("[System] Session complete. Starting fresh context for next task...")
+                return await self.restart_agent()
+            elif self._user_started and not self.has_open_features():
+                logger.info(f"All features complete in {self.container_name}!")
+                await self._broadcast_output("[System] All features complete!")
+                await self.stop()
+                self.status = "completed"
+                return True, "All features complete"
+
             return True, "Instruction sent"
 
         except Exception as e:
@@ -448,21 +484,25 @@ class ContainerManager:
         """
         logger.info(f"Restarting agent in container {self.container_name}")
 
-        # Stop the container
-        await self.stop()
-
-        # Read the coding prompt from the project
-        coding_prompt_path = self.project_dir / "prompts" / "coding_prompt.md"
-        if not coding_prompt_path.exists():
-            return False, "No coding_prompt.md found in project"
-
+        self._restarting = True
         try:
-            instruction = coding_prompt_path.read_text()
-        except Exception as e:
-            return False, f"Failed to read coding prompt: {e}"
+            # Stop the container
+            await self.stop()
 
-        # Start container with instruction
-        return await self.start(instruction)
+            # Read the coding prompt from the project
+            coding_prompt_path = self.project_dir / "prompts" / "coding_prompt.md"
+            if not coding_prompt_path.exists():
+                return False, "No coding_prompt.md found in project"
+
+            try:
+                instruction = coding_prompt_path.read_text()
+            except Exception as e:
+                return False, f"Failed to read coding prompt: {e}"
+
+            # Start container with instruction
+            return await self.start(instruction)
+        finally:
+            self._restarting = False
 
     def get_status_dict(self) -> dict:
         """Get current status as a dictionary."""
@@ -608,6 +648,10 @@ async def monitor_agent_health() -> list[str]:
     for manager in managers:
         # Only monitor user-started containers
         if not manager.user_started:
+            continue
+
+        # Skip if restart already in progress
+        if manager._restarting:
             continue
 
         # Only check running containers
