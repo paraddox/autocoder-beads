@@ -13,6 +13,9 @@ FROM ubuntu:24.04
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Disable beads daemon in containers (avoids stale lock file issues)
+ENV BD_NO_DAEMON=true
+
 # Install essentials
 RUN apt-get update && apt-get install -y \
     git \
@@ -78,6 +81,12 @@ if [ -d "/tmp/claude-creds" ]; then
     cp -r /tmp/claude-creds/* /home/coder/.claude/ 2>/dev/null || true
     shopt -u dotglob
     chown -R coder:coder /home/coder/.claude
+fi
+
+# Clean up stale beads daemon lock files (prevents stack overflow bug)
+if [ -f "/project/.beads/daemon.lock" ]; then
+    rm -f /project/.beads/daemon.lock
+    echo "Removed stale beads daemon.lock"
 fi
 
 # Make .beads directory world-readable if it exists
