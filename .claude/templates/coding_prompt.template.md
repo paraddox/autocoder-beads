@@ -16,458 +16,113 @@ This is a FRESH context window - you have no memory of previous sessions.
 
 **Failure to follow this workflow breaks the monitoring system.** The UI shows users what you're working on by reading beads status. If you skip these commands, users cannot monitor your progress.
 
-**This workflow is your PRIMARY communication channel with users.** Respect it.
-
 ---
 
-### STEP 1: GET YOUR BEARINGS (MANDATORY)
-
-Start by orienting yourself:
+### STEP 1: QUICK ORIENTATION (2 MINUTES MAX)
 
 ```bash
-# 1. See your working directory
-pwd
-
-# 2. List files to understand project structure
-ls -la
-
-# 3. Read the project specification to understand what you're building
+pwd && ls -la
 cat prompts/app_spec.txt
-
-# 4. Read progress notes from previous sessions
-cat claude-progress.txt
-
-# 5. Check recent git history
-git log --oneline -20
-
-# 6. Get progress statistics
+cat claude-progress.txt 2>/dev/null || echo "No progress file yet"
 bd stats
-
-# 7. Get the next feature to work on
 bd ready
 ```
 
-Understanding the `prompts/app_spec.txt` is critical - it contains the full requirements
-for the application you're building.
+**DO NOT** spend more than 2 minutes on orientation. Get the basics and move on.
 
-### STEP 2: START SERVERS (IF NOT RUNNING)
-
-If `init.sh` exists, run it:
+### STEP 2: START SERVERS
 
 ```bash
-chmod +x init.sh
-./init.sh
+chmod +x init.sh 2>/dev/null && ./init.sh || echo "No init.sh, start servers manually"
 ```
 
-Otherwise, start servers manually and document the process.
+### STEP 3: IMPLEMENT A FEATURE (PRIMARY GOAL)
 
-### STEP 3: QUICK VERIFICATION (3 FEATURES MAX)
+**This is your main job. Do this FIRST before any verification.**
 
-**⚠️ LIMIT: Test AT MOST 3 completed features, then MOVE ON to implementation.**
-
-Quick smoke test to catch regressions:
+#### 3.1 Claim a Feature IMMEDIATELY
 
 ```bash
-bd list --status=closed --limit 3
-```
-
-Test these 3 features quickly (spend no more than 5 minutes total on verification).
-
-**DO NOT:**
-- Test more than 3 features
-- Spend excessive time on verification
-- Document verification results extensively
-- Verify features without then implementing new ones
-
-**After verifying 3 features (or fewer), you MUST immediately proceed to STEP 4 (implementation).**
-
-If you find a regression, note it briefly and fix it as part of your implementation work.
-
-**If you find ANY issues (functional or visual):**
-
-- Reopen that feature immediately: `bd reopen <id>`
-- Add issues to a list
-- Fix all issues BEFORE moving to new features
-- This includes UI bugs like:
-  - White-on-white text or poor contrast
-  - Random characters displayed
-  - Incorrect timestamps
-  - Layout issues or overflow
-  - Buttons too close together
-  - Missing hover states
-  - Console errors
-
-### STEP 4: CHOOSE AND CLAIM A FEATURE
-
-#### 4.1 Get the Next Feature
-
-```bash
-# Get the highest-priority pending feature
 bd ready
-```
-
-#### 4.2 MANDATORY: Mark as In Progress BEFORE Any Work
-
-**🚨 CRITICAL: You MUST run this command BEFORE writing any code:**
-
-```bash
 bd update <feature-id> --status=in_progress
 ```
 
-This is **NOT OPTIONAL**. The UI monitors which features are in_progress to show users what you're currently working on. Skipping this step breaks the monitoring system.
+**🚨 You MUST run `bd update --status=in_progress` BEFORE writing ANY code.**
 
-**Workflow:**
-1. Run `bd ready` → get feature ID
-2. Run `bd update <id> --status=in_progress` → **IMMEDIATELY, before anything else**
-3. Then start implementing
+#### 3.2 Implement the Feature
 
-#### 4.3 TEST-DRIVEN DEVELOPMENT MINDSET (CRITICAL)
+1. Read the feature requirements
+2. Write the code (frontend and/or backend)
+3. Test it works through the UI
+4. Fix any issues
 
-Features are **test cases** that drive development. This is test-driven development:
+#### 3.3 Mark Complete
 
-- **If you can't test a feature because functionality doesn't exist → BUILD IT**
-- You are responsible for implementing ALL required functionality
-- Never assume another process will build it later
-- "Missing functionality" is NOT a blocker - it's your job to create it
+```bash
+bd close <feature-id>
+git add . && git commit -m "Implement: <feature name>"
+```
 
-**Example:** Feature says "User can filter flashcards by difficulty level"
-- WRONG: "Flashcard page doesn't exist yet" → skip feature
-- RIGHT: "Flashcard page doesn't exist yet" → build flashcard page → implement filter → test feature
+### STEP 4: VERIFY 3 OTHER FEATURES (AFTER IMPLEMENTING)
 
-Focus on completing one feature perfectly and completing its testing steps in this session before moving on to other features.
-It's ok if you only complete one feature in this session, as there will be more sessions later that continue to make progress.
+**Only do this AFTER completing Step 3.**
 
-#### When to Skip a Feature (EXTREMELY RARE)
+Quick regression check on 3 previously completed features (NOT the one you just finished):
 
-**Skipping should almost NEVER happen.** Only skip for truly external blockers you cannot control:
+```bash
+bd list --status=closed --limit 4
+```
 
-- **External API not configured**: Third-party service credentials missing (e.g., Stripe keys, OAuth secrets)
-- **External service unavailable**: Dependency on service that's down or inaccessible
-- **Environment limitation**: Hardware or system requirement you cannot fulfill
+Pick 3 features (skip the one you just closed) and quickly verify they still work.
 
-**NEVER skip because:**
+- Spend MAX 5 minutes total on verification
+- If something is broken, note it and fix it
+- Do NOT get stuck in verification mode
 
-| Situation | Wrong Action | Correct Action |
-|-----------|--------------|----------------|
+### STEP 5: REPEAT OR END SESSION
+
+If time remains:
+- Go back to Step 3 and implement another feature
+
+Before ending:
+```bash
+git add . && git commit -m "Session progress"
+bd sync
+```
+
+Update `claude-progress.txt` with what you accomplished.
+
+---
+
+## KEY RULES
+
+1. **IMPLEMENT FIRST** - Always implement a feature before doing verification
+2. **MARK IN_PROGRESS** - Always run `bd update <id> --status=in_progress` before coding
+3. **LIMIT VERIFICATION** - Max 3 features, max 5 minutes, only AFTER implementing
+4. **NO RABBIT HOLES** - Don't spend hours testing without implementing
+
+## TEST-DRIVEN MINDSET
+
+Features are test cases. If functionality doesn't exist, BUILD IT.
+
+| Situation | Wrong | Right |
+|-----------|-------|-------|
 | "Page doesn't exist" | Skip | Create the page |
-| "API endpoint missing" | Skip | Implement the endpoint |
-| "Database table not ready" | Skip | Create the migration |
-| "Component not built" | Skip | Build the component |
-| "No data to test with" | Skip | Create test data or build data entry flow |
-| "Feature X needs to be done first" | Skip | Build feature X as part of this feature |
-
-If a feature requires building other functionality first, **build that functionality**. You are the coding agent - your job is to make the feature work, not to defer it.
-
-If you must skip (truly external blocker only):
-
-```bash
-bd update <feature-id> --status=blocked
-bd comments <feature-id> add "Blocked: <reason>"
-```
-
-Document the SPECIFIC external blocker in `claude-progress.txt`. "Functionality not built" is NEVER a valid reason.
-
-### STEP 5: IMPLEMENT THE FEATURE
-
-Implement the chosen feature thoroughly:
-
-1. Write the code (frontend and/or backend as needed)
-2. Test manually using browser automation (see Step 6)
-3. Fix any issues discovered
-4. Verify the feature works end-to-end
-
-### STEP 6: VERIFY WITH BROWSER AUTOMATION
-
-**CRITICAL:** You MUST verify features through the actual UI.
-
-Use browser automation tools:
-
-- Navigate to the app in a real browser
-- Interact like a human user (click, type, scroll)
-- Take screenshots at each step
-- Verify both functionality AND visual appearance
-
-**DO:**
-
-- Test through the UI with clicks and keyboard input
-- Take screenshots to verify visual appearance
-- Check for console errors in browser
-- Verify complete user workflows end-to-end
-
-**DON'T:**
-
-- Only test with curl commands (backend testing alone is insufficient)
-- Use JavaScript evaluation to bypass UI (no shortcuts)
-- Skip visual verification
-- Mark tests passing without thorough verification
-
-### STEP 6.5: MANDATORY VERIFICATION CHECKLIST (BEFORE MARKING ANY FEATURE COMPLETE)
-
-**You MUST complete ALL of these checks before marking any feature as complete**
-
-#### Security Verification (for protected features)
-
-- [ ] Feature respects user role permissions
-- [ ] Unauthenticated access is blocked (redirects to login)
-- [ ] API endpoint checks authorization (returns 401/403 appropriately)
-- [ ] Cannot access other users' data by manipulating URLs
-
-#### Real Data Verification (CRITICAL - NO MOCK DATA)
-
-- [ ] Created unique test data via UI (e.g., "TEST_12345_VERIFY_ME")
-- [ ] Verified the EXACT data I created appears in UI
-- [ ] Refreshed page - data persists (proves database storage)
-- [ ] Deleted the test data - verified it's gone everywhere
-- [ ] NO unexplained data appeared (would indicate mock data)
-- [ ] Dashboard/counts reflect real numbers after my changes
-
-#### Navigation Verification
-
-- [ ] All buttons on this page link to existing routes
-- [ ] No 404 errors when clicking any interactive element
-- [ ] Back button returns to correct previous page
-- [ ] Related links (edit, view, delete) have correct IDs in URLs
-
-#### Integration Verification
-
-- [ ] Console shows ZERO JavaScript errors
-- [ ] Network tab shows successful API calls (no 500s)
-- [ ] Data returned from API matches what UI displays
-- [ ] Loading states appeared during API calls
-- [ ] Error states handle failures gracefully
-
-### STEP 6.6: MOCK DATA DETECTION SWEEP
-
-**Run this sweep AFTER EVERY FEATURE before marking it as complete:**
-
-#### 1. Code Pattern Search
-
-Search the codebase for forbidden patterns:
-
-```bash
-# Search for mock data patterns
-grep -r "mockData\|fakeData\|sampleData\|dummyData\|testData" --include="*.js" --include="*.ts" --include="*.jsx" --include="*.tsx"
-grep -r "// TODO\|// FIXME\|// STUB\|// MOCK" --include="*.js" --include="*.ts" --include="*.jsx" --include="*.tsx"
-grep -r "hardcoded\|placeholder" --include="*.js" --include="*.ts" --include="*.jsx" --include="*.tsx"
-```
-
-**If ANY matches found related to your feature - FIX THEM before proceeding.**
-
-#### 2. Runtime Verification
-
-For ANY data displayed in UI:
-
-1. Create NEW data with UNIQUE content (e.g., "TEST_12345_DELETE_ME")
-2. Verify that EXACT content appears in the UI
-3. Delete the record
-4. Verify it's GONE from the UI
-5. **If you see data that wasn't created during testing - IT'S MOCK DATA. Fix it.**
-
-#### 3. Database Verification
-
-Check that:
-
-- Database tables contain only data you created during tests
-- Counts/statistics match actual database record counts
-- No seed data is masquerading as user data
-
-#### 4. API Response Verification
-
-For API endpoints used by this feature:
-
-- Call the endpoint directly
-- Verify response contains actual database data
-- Empty database = empty response (not pre-populated mock data)
-
-### STEP 7: UPDATE FEATURE STATUS (CAREFULLY!)
-
-After thorough verification, mark the feature as complete:
-
-```bash
-# Mark feature as complete (replace <id> with the actual feature ID)
-bd close <feature-id>
-```
-
-**NEVER:**
-
-- Delete features
-- Edit feature descriptions
-- Modify feature steps
-- Combine or consolidate features
-- Reorder features
-
-**ONLY MARK A FEATURE AS COMPLETE AFTER VERIFICATION WITH SCREENSHOTS.**
-
-### STEP 8: COMMIT YOUR PROGRESS
-
-Make a descriptive git commit:
-
-```bash
-git add .
-git commit -m "Implement [feature name] - verified end-to-end
-
-- Added [specific changes]
-- Tested with browser automation
-- Marked feature #X as complete
-- Screenshots in verification/ directory
-"
-```
-
-### STEP 9: UPDATE PROGRESS NOTES
-
-Update `claude-progress.txt` with:
-
-- What you accomplished this session
-- Which feature(s) you completed
-- Any issues discovered or fixed
-- What should be worked on next
-- Current completion status (e.g., "45/200 features complete")
-
-Then sync beads:
-
-```bash
-bd sync
-```
-
-### STEP 10: END SESSION CLEANLY
-
-Before context fills up:
-
-1. Commit all working code
-2. Update claude-progress.txt
-3. Sync beads: `bd sync`
-4. Ensure no uncommitted changes
-5. Leave app in working state (no broken features)
+| "API missing" | Skip | Implement the API |
+| "No data" | Skip | Create test data |
 
 ---
 
-## TESTING REQUIREMENTS
-
-**ALL testing must use browser automation tools.**
-
-Available tools:
-
-**Navigation & Screenshots:**
-
-- browser_navigate - Navigate to a URL
-- browser_navigate_back - Go back to previous page
-- browser_take_screenshot - Capture screenshot (use for visual verification)
-- browser_snapshot - Get accessibility tree snapshot (structured page data)
-
-**Element Interaction:**
-
-- browser_click - Click elements (has built-in auto-wait)
-- browser_type - Type text into editable elements
-- browser_fill_form - Fill multiple form fields at once
-- browser_select_option - Select dropdown options
-- browser_hover - Hover over elements
-- browser_drag - Drag and drop between elements
-- browser_press_key - Press keyboard keys
-
-**Debugging & Monitoring:**
-
-- browser_console_messages - Get browser console output (check for errors)
-- browser_network_requests - Monitor API calls and responses
-- browser_evaluate - Execute JavaScript (USE SPARINGLY - debugging only, NOT for bypassing UI)
-
-**Browser Management:**
-
-- browser_close - Close the browser
-- browser_resize - Resize browser window (use to test mobile: 375x667, tablet: 768x1024, desktop: 1280x720)
-- browser_tabs - Manage browser tabs
-- browser_wait_for - Wait for text/element/time
-- browser_handle_dialog - Handle alert/confirm dialogs
-- browser_file_upload - Upload files
-
-**Key Benefits:**
-
-- All interaction tools have **built-in auto-wait** - no manual timeouts needed
-- Use `browser_console_messages` to detect JavaScript errors
-- Use `browser_network_requests` to verify API calls succeed
-
-Test like a human user with mouse and keyboard. Don't take shortcuts by using JavaScript evaluation.
-
----
-
-## BEADS COMMAND REFERENCE
+## BEADS COMMANDS
 
 ```bash
-# Get progress stats
-bd stats
-
-# Get features ready to work on (no blockers)
-bd ready
-
-# List all open features
-bd list --status=open
-
-# List features in progress
-bd list --status=in_progress
-
-# View feature details
-bd show <feature-id>
-
-# Claim a feature
-bd update <feature-id> --status=in_progress
-
-# Mark feature as complete
-bd close <feature-id>
-
-# Mark feature as blocked
-bd update <feature-id> --status=blocked
-
-# Add a comment to a feature
-bd comments <feature-id> add "Your comment here"
-
-# Sync with remote
-bd sync
+bd ready                              # Get next feature
+bd update <id> --status=in_progress   # Claim feature (REQUIRED before coding)
+bd close <id>                         # Mark complete
+bd stats                              # Check progress
+bd sync                               # Sync at session end
 ```
 
-**You do NOT need to see all features.** The `bd ready` command tells you exactly what to work on. Trust it.
-
 ---
 
-## EMAIL INTEGRATION (DEVELOPMENT MODE)
-
-When building applications that require email functionality (password resets, email verification, notifications, etc.), you typically won't have access to a real email service or the ability to read email inboxes.
-
-**Solution:** Configure the application to log emails to the terminal instead of sending them.
-
-- Password reset links should be printed to the console
-- Email verification links should be printed to the console
-- Any notification content should be logged to the terminal
-
-**During testing:**
-
-1. Trigger the email action (e.g., click "Forgot Password")
-2. Check the terminal/server logs for the generated link
-3. Use that link directly to verify the functionality works
-
-This allows you to fully test email-dependent flows without needing external email services.
-
----
-
-## IMPORTANT REMINDERS
-
-**Your Goal:** Production-quality application with all features complete
-
-**This Session's Goal:** Complete at least one feature perfectly
-
-**Priority:** Fix broken features before implementing new features
-
-**Quality Bar:**
-
-- Zero console errors
-- Polished UI matching the design specified in prompts/app_spec.txt
-- All features work end-to-end through the UI
-- Fast, responsive, professional
-- **NO MOCK DATA - all data from real database**
-- **Security enforced - unauthorized access blocked**
-- **All navigation works - no 404s or broken links**
-
-**You have unlimited time.** Take as long as needed to get it right. The most important thing is that you
-leave the code base in a clean state before terminating the session (Step 10).
-
----
-
-Begin by running Step 1 (Get Your Bearings).
+Begin with Step 1, then IMMEDIATELY move to Step 3 (implement a feature).
