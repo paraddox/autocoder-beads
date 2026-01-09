@@ -64,9 +64,21 @@ docker build -f Dockerfile.project -t autocoder-project .
 - Multiple containers can run simultaneously for different projects
 
 **Container lifecycle:**
-- `not_created` → `running` → `stopped` (15 min idle timeout)
+- `not_created` → `running` → `stopped` (60 min idle timeout) → `completed`
 - Stopped containers persist and restart quickly
 - Progress visible in all states (reads from `.beads/` on host)
+- `completed` status when all features are done
+
+**Fresh context per task:**
+- Each feature implementation runs in isolated context
+- After completing 1 feature + 3 verifications, Claude exits
+- System auto-restarts with fresh context for next task
+- Continues until all features done or user stops
+
+**Health monitoring:**
+- Checks every 10 minutes if Claude process is running
+- Auto-restarts crashed agents (user-started containers only)
+- Skips containers already in restart process
 
 **Container naming:** `autocoder-{project-name}`
 
@@ -169,14 +181,17 @@ Defense-in-depth approach using Docker containers:
 
 1. Start project container via UI (creates `autocoder-{project}` container)
 2. Container runs Claude Code with project-specific `CLAUDE.md`
-3. Claude Code uses beads CLI to track feature progress
-4. Container stops after 15 min idle (can be restarted)
+3. Claude implements ONE feature + verifies 3 others, then exits
+4. System detects exit, checks for remaining features:
+   - If features remain → auto-restart with fresh context
+   - If all done → mark `completed`, stop container
+5. Health monitor handles crash recovery (every 10 min)
 
 ### Real-time UI Updates
 
 The UI receives updates via WebSocket (`/ws/projects/{project_name}`):
 - `progress` - Feature pass counts (from `bd stats`)
-- `agent_status` - not_created/running/stopped
+- `agent_status` - not_created/running/stopped/completed
 - `log` - Agent output lines (streamed from `docker logs`)
 - `feature_update` - Feature status changes
 

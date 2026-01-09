@@ -100,10 +100,18 @@ When you start an agent for a project via the UI, it automatically:
 4. Runs Claude Code with beads-based feature tracking
 
 **Container lifecycle:**
-- `not_created` → `running` → `stopped` (15 min idle timeout)
+- `not_created` → `running` → `stopped` (60 min idle timeout) → `completed`
 - Stopped containers persist and restart quickly
 - Progress is visible in all states (reads from `.beads/` on host)
 - Multiple containers can run simultaneously for different projects
+- `completed` status when all features are done
+
+**Fresh context per task:**
+- Each feature implementation runs in isolated context window
+- After completing 1 feature + 3 verifications, Claude exits
+- System auto-restarts with fresh context for the next task
+- Continues automatically until all features done or user stops
+- Health monitor auto-recovers crashed agents (every 10 min)
 
 ---
 
@@ -113,7 +121,11 @@ When you start an agent for a project via the UI, it automatically:
 
 1. **Initializer Agent (First Session):** Reads your app specification, creates features using beads issue tracking (`.beads/` directory), sets up the project structure, and initializes git.
 
-2. **Coding Agent (Subsequent Sessions):** Picks up where the previous session left off, implements features one by one, and marks them as complete using beads.
+2. **Coding Agent (Subsequent Sessions):** Each session runs with fresh context:
+   - Implements ONE feature (marks `in_progress` → `closed`)
+   - Verifies 3 previously completed features
+   - Exits cleanly after one task cycle
+   - System auto-restarts for next feature
 
 ### Feature Management
 
@@ -126,10 +138,12 @@ Features are tracked using **beads** (git-backed issue tracking). Each project h
 
 ### Session Management
 
-- Each session runs with a fresh context window
-- Progress is persisted via SQLite database and git commits
-- The agent auto-continues between sessions (3 second delay)
-- Press `Ctrl+C` to pause; run the start script again to resume
+- **Fresh context per task:** Each feature runs in isolated context window
+- Progress is persisted via beads (`.beads/` directory) and git commits
+- Auto-restart: System immediately starts new session after each task
+- Auto-completion: Stops automatically when all features are done
+- Health monitor: Recovers crashed agents every 10 minutes
+- Use UI controls to stop/start agent manually
 
 ---
 
