@@ -283,37 +283,16 @@ class BeadsClient:
         """
         Get statistics about feature completion.
 
+        Reads directly from JSONL file to avoid permission issues.
+        The host should never run bd CLI commands that might write.
+
         Returns:
             Dict with: passing, in_progress, total, percentage
         """
         if not self.is_initialized():
             return {"passing": 0, "in_progress": 0, "total": 0, "percentage": 0.0}
 
-        try:
-            result = self._run_bd(["stats", "--json"], check=False, timeout=5)
-            if result.returncode != 0:
-                # CLI failed, try JSONL fallback
-                return self._get_stats_from_jsonl()
-
-            stats = self._parse_json_output(result)
-            if isinstance(stats, dict):
-                # bd stats returns {"summary": {"total_issues": N, "closed_issues": M, ...}}
-                summary = stats.get("summary", stats)
-                closed = summary.get("closed_issues", 0)
-                in_progress = summary.get("in_progress_issues", 0)
-                total = summary.get("total_issues", 0)
-                percentage = round((closed / total) * 100, 1) if total > 0 else 0.0
-
-                return {
-                    "passing": closed,
-                    "in_progress": in_progress,
-                    "total": total,
-                    "percentage": percentage,
-                }
-        except (subprocess.TimeoutExpired, Exception):
-            # CLI crashed or timed out, use JSONL fallback
-            pass
-
+        # Always read directly from JSONL - never call bd CLI from host
         return self._get_stats_from_jsonl()
 
     def has_features(self) -> bool:
@@ -648,41 +627,17 @@ class BeadsClient:
         """
         List all features (open, in_progress, closed).
 
+        Reads directly from JSONL file to avoid permission issues.
+        The host should never run bd CLI commands that might write.
+
         Returns:
             List of feature dicts
         """
         if not self.is_initialized():
             return []
 
-        all_features = []
-        cli_failed = False
-
-        for status in ["open", "in_progress", "closed"]:
-            try:
-                result = self._run_bd([
-                    "list",
-                    f"--status={status}",
-                    "--limit", "0",  # Unlimited results (default is 50)
-                    "--json",
-                ], check=False, timeout=5)
-
-                if result.returncode == 0:
-                    issues = self._parse_json_output(result)
-                    for issue in issues:
-                        all_features.append(self._issue_to_feature(issue))
-                else:
-                    cli_failed = True
-            except (subprocess.TimeoutExpired, Exception):
-                cli_failed = True
-                break
-
-        # If CLI failed for any status, fall back to JSONL
-        if cli_failed and not all_features:
-            return self._list_all_from_jsonl()
-
-        # Sort by priority
-        all_features.sort(key=lambda f: f.get("priority", 999))
-        return all_features
+        # Always read directly from JSONL - never call bd CLI from host
+        return self._list_all_from_jsonl()
 
     def delete(self, feature_id: str) -> bool:
         """
