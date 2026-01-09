@@ -61,22 +61,27 @@ chmod +x init.sh
 
 Otherwise, start servers manually and document the process.
 
-### STEP 3: VERIFICATION TEST (CRITICAL!)
+### STEP 3: QUICK VERIFICATION (3 FEATURES MAX)
 
-**MANDATORY BEFORE NEW WORK:**
+**⚠️ LIMIT: Test AT MOST 3 completed features, then MOVE ON to implementation.**
 
-The previous session may have introduced bugs. Before implementing anything
-new, you MUST run verification tests.
-
-Run 1-2 of the features marked as closed that are most core to the app's functionality to verify they still work.
-
-To see completed features:
+Quick smoke test to catch regressions:
 
 ```bash
-bd list --status=closed
+bd list --status=closed --limit 3
 ```
 
-For example, if this were a chat app, you should perform a test that logs into the app, sends a message, and gets a response.
+Test these 3 features quickly (spend no more than 5 minutes total on verification).
+
+**DO NOT:**
+- Test more than 3 features
+- Spend excessive time on verification
+- Document verification results extensively
+- Verify features without then implementing new ones
+
+**After verifying 3 features (or fewer), you MUST immediately proceed to STEP 4 (implementation).**
+
+If you find a regression, note it briefly and fix it as part of your implementation work.
 
 **If you find ANY issues (functional or visual):**
 
