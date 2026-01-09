@@ -63,7 +63,8 @@ export function AgentThought({ logs, agentStatus }: AgentThoughtProps) {
   const shouldShow = useMemo(() => {
     if (!thought) return false
     if (agentStatus === 'running') return true
-    if (agentStatus === 'paused') {
+    // Show briefly after stop if recent logs exist
+    if (agentStatus === 'stopped') {
       return Date.now() - lastLogTimestamp < IDLE_TIMEOUT
     }
     return false

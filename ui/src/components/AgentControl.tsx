@@ -1,10 +1,8 @@
 import { useState } from 'react'
-import { Play, Pause, Square, Loader2, Zap } from 'lucide-react'
+import { Play, Square, Loader2, Zap } from 'lucide-react'
 import {
   useStartAgent,
   useStopAgent,
-  usePauseAgent,
-  useResumeAgent,
 } from '../hooks/useProjects'
 import type { AgentStatus } from '../lib/types'
 
@@ -19,19 +17,13 @@ export function AgentControl({ projectName, status, yoloMode = false }: AgentCon
 
   const startAgent = useStartAgent(projectName)
   const stopAgent = useStopAgent(projectName)
-  const pauseAgent = usePauseAgent(projectName)
-  const resumeAgent = useResumeAgent(projectName)
 
   const isLoading =
     startAgent.isPending ||
-    stopAgent.isPending ||
-    pauseAgent.isPending ||
-    resumeAgent.isPending
+    stopAgent.isPending
 
   const handleStart = () => startAgent.mutate(yoloEnabled)
   const handleStop = () => stopAgent.mutate()
-  const handlePause = () => pauseAgent.mutate()
-  const handleResume = () => resumeAgent.mutate()
 
   return (
     <div className="flex items-center gap-2">
@@ -39,7 +31,7 @@ export function AgentControl({ projectName, status, yoloMode = false }: AgentCon
       <StatusIndicator status={status} />
 
       {/* YOLO Mode Indicator */}
-      {(status === 'running' || status === 'paused') && yoloMode && (
+      {status === 'running' && yoloMode && (
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--color-pending-bg)] border border-[var(--color-pending-border)] rounded-md">
           <Zap size={12} className="text-[var(--color-pending)]" />
           <span className="font-medium text-xs text-[#9A7B2E]">
@@ -76,51 +68,18 @@ export function AgentControl({ projectName, status, yoloMode = false }: AgentCon
             </button>
           </>
         ) : status === 'running' ? (
-          <>
-            <button
-              onClick={handlePause}
-              disabled={isLoading}
-              className="btn btn-warning btn-icon"
-              title="Pause Agent"
-            >
-              {isLoading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Pause size={16} />
-              )}
-            </button>
-            <button
-              onClick={handleStop}
-              disabled={isLoading}
-              className="btn btn-danger btn-icon"
-              title="Stop Agent"
-            >
+          <button
+            onClick={handleStop}
+            disabled={isLoading}
+            className="btn btn-danger btn-icon"
+            title="Stop Agent"
+          >
+            {isLoading ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
               <Square size={16} />
-            </button>
-          </>
-        ) : status === 'paused' ? (
-          <>
-            <button
-              onClick={handleResume}
-              disabled={isLoading}
-              className="btn btn-success btn-icon"
-              title="Resume Agent"
-            >
-              {isLoading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Play size={16} />
-              )}
-            </button>
-            <button
-              onClick={handleStop}
-              disabled={isLoading}
-              className="btn btn-danger btn-icon"
-              title="Stop Agent"
-            >
-              <Square size={16} />
-            </button>
-          </>
+            )}
+          </button>
         ) : null}
       </div>
     </div>
@@ -143,11 +102,6 @@ function StatusIndicator({ status }: { status: AgentStatus }) {
       color: 'var(--color-done)',
       label: 'Running',
       pulse: true,
-    },
-    paused: {
-      color: 'var(--color-pending)',
-      label: 'Paused',
-      pulse: false,
     },
     crashed: {
       color: 'var(--color-danger)',

@@ -129,27 +129,6 @@ export function useStopAgent(projectName: string) {
   })
 }
 
-export function usePauseAgent(projectName: string) {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: () => api.pauseAgent(projectName),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
-    },
-  })
-}
-
-export function useResumeAgent(projectName: string) {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: () => api.resumeAgent(projectName),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
-    },
-  })
-}
 
 // ============================================================================
 // Setup

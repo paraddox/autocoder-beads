@@ -101,7 +101,7 @@ export interface FeatureCreate {
 }
 
 // Agent types
-export type AgentStatus = 'not_created' | 'stopped' | 'running' | 'paused' | 'crashed'
+export type AgentStatus = 'not_created' | 'stopped' | 'running' | 'crashed'
 
 export interface AgentStatusResponse {
   status: AgentStatus
