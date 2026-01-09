@@ -73,9 +73,10 @@ WORKDIR /project
 # Create entrypoint script to copy credentials at startup
 RUN cat > /entrypoint.sh << 'EOF'
 #!/bin/bash
-# Set permissive umask so files are readable by host user
-# 002 = files 664, dirs 775 (group and world readable)
-umask 002
+# Set fully permissive umask so ALL new files are world readable/writable
+# This ensures both host user and container user can access files
+# 000 = files 666, dirs 777
+umask 000
 
 # Update Claude Code to latest version at startup
 echo "Updating Claude Code to latest version..."
@@ -96,11 +97,10 @@ if [ -f "/project/.beads/daemon.lock" ]; then
     echo "Removed stale beads daemon.lock"
 fi
 
-# Fix .beads directory permissions (allow container to write, host to read)
+# Fix .beads directory permissions at startup (make world-writable)
+# Don't chown - keep host ownership but make accessible to container
 if [ -d "/project/.beads" ]; then
-    # Make all files writable by container user
-    chown -R coder:coder /project/.beads 2>/dev/null || true
-    chmod -R a+rw /project/.beads 2>/dev/null || true
+    chmod -R a+rwX /project/.beads 2>/dev/null || true
 fi
 
 # Keep container running

@@ -15,12 +15,17 @@ Features:
 
 import asyncio
 import json
+import os
 import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
 
 from claude_code_sdk import query, ClaudeCodeOptions
+
+# Set permissive umask so all files created are world-readable/writable
+# This ensures host user can access files created by container user
+os.umask(0o000)
 
 # State file for crash recovery (in coder's home, not project dir due to permissions)
 STATE_FILE = Path("/home/coder/.agent_state.json")
