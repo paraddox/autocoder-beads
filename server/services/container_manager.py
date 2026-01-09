@@ -9,8 +9,10 @@ Each project gets its own sandboxed container.
 import asyncio
 import json
 import logging
+import os
 import re
 import subprocess
+import tempfile
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -181,12 +183,13 @@ class ContainerManager:
         return int((datetime.now() - self.last_activity).total_seconds())
 
     def is_agent_running(self) -> bool:
-        """Check if the claude process is running inside the container."""
+        """Check if the agent process is running inside the container."""
         if self._status != "running":
             return False
         try:
+            # Check for Python agent_app.py process
             result = subprocess.run(
-                ["docker", "exec", self.container_name, "pgrep", "-x", "claude"],
+                ["docker", "exec", self.container_name, "pgrep", "-f", "python.*agent_app"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -311,20 +314,20 @@ class ContainerManager:
 
             # Send instruction if provided
             if instruction:
-                # Wait for claude to be available (entrypoint runs npm update)
+                # Wait for Python and agent app to be available
                 for attempt in range(10):
                     await asyncio.sleep(2)
                     check = subprocess.run(
                         ["docker", "exec", "-u", "coder", self.container_name,
-                         "which", "claude"],
+                         "python", "-c", "import claude_code_sdk; print('ok')"],
                         capture_output=True,
                         text=True,
                     )
                     if check.returncode == 0:
                         break
-                    logger.info(f"Waiting for claude to be ready (attempt {attempt + 1}/10)")
+                    logger.info(f"Waiting for agent SDK to be ready (attempt {attempt + 1}/10)")
                 else:
-                    return False, "Claude Code not available in container after 20 seconds"
+                    return False, "Agent SDK not available in container after 20 seconds"
 
                 return await self.send_instruction(instruction)
 
@@ -382,7 +385,9 @@ class ContainerManager:
 
     async def send_instruction(self, instruction: str) -> tuple[bool, str]:
         """
-        Send an instruction to Claude Code running in the container.
+        Send an instruction to the Agent SDK app running in the container.
+
+        Uses stdin to pass the prompt to agent_app.py, avoiding shell escaping issues.
 
         Args:
             instruction: The instruction/prompt to send
@@ -398,32 +403,70 @@ class ContainerManager:
         try:
             self._update_activity()
 
-            # Use docker exec to run claude with the instruction
-            # Run as 'coder' user (non-root) to allow --dangerously-skip-permissions
-            # --dangerously-skip-permissions allows autonomous operation in sandbox
-            # --print outputs response without interactive mode
-            process = await asyncio.create_subprocess_exec(
-                "docker", "exec", "-u", "coder", self.container_name,
-                "claude", "--print", "--dangerously-skip-permissions", instruction,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
+            # Write prompt to a temp file, then pipe to container via stdin
+            # This avoids shell escaping issues with large prompts
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".txt", delete=False, encoding="utf-8"
+            ) as f:
+                f.write(instruction)
+                prompt_file = f.name
 
-            # Stream output to callbacks
-            while True:
-                if process.stdout is None:
-                    break
-                line = await process.stdout.readline()
-                if not line:
-                    break
-                decoded = line.decode("utf-8", errors="replace").rstrip()
-                sanitized = sanitize_output(decoded)
-                self._update_activity()
-                await self._broadcast_output(sanitized)
+            try:
+                # Use docker exec with stdin to run the Python agent app
+                # Run as 'coder' user (non-root) for proper permissions
+                # Note: Using create_subprocess_exec (not shell) for security
+                with open(prompt_file, "r", encoding="utf-8") as stdin_file:
+                    process = await asyncio.create_subprocess_exec(
+                        "docker", "exec", "-i", "-u", "coder", self.container_name,
+                        "python", "/app/agent_app.py",
+                        stdin=stdin_file,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT,
+                    )
 
-            await process.wait()
+                    # Stream output to callbacks
+                    while True:
+                        if process.stdout is None:
+                            break
+                        line = await process.stdout.readline()
+                        if not line:
+                            break
+                        decoded = line.decode("utf-8", errors="replace").rstrip()
+                        sanitized = sanitize_output(decoded)
+                        self._update_activity()
+                        await self._broadcast_output(sanitized)
 
-            # Auto-restart logic for fresh context per task
+                    await process.wait()
+                    exit_code = process.returncode or 0
+
+            finally:
+                # Clean up temp file
+                os.unlink(prompt_file)
+
+            # Handle exit code with enhanced error recovery
+            return await self._handle_agent_exit(exit_code)
+
+        except Exception as e:
+            logger.exception("Failed to send instruction")
+            return False, f"Failed to send instruction: {e}"
+
+    async def _handle_agent_exit(self, exit_code: int) -> tuple[bool, str]:
+        """
+        Handle agent exit with recovery logic.
+
+        Exit codes:
+        - 0: Success
+        - 1: Failure (all retries exhausted)
+        - 130: User interrupt (Ctrl+C)
+
+        Args:
+            exit_code: The exit code from the agent process
+
+        Returns:
+            Tuple of (success, message)
+        """
+        if exit_code == 0:
+            # Success - check for more features
             if self._user_started and self.has_open_features():
                 logger.info(f"Task complete in {self.container_name}, restarting for next feature...")
                 await self._broadcast_output("[System] Session complete. Starting fresh context for next task...")
@@ -434,12 +477,36 @@ class ContainerManager:
                 await self.stop()
                 self.status = "completed"
                 return True, "All features complete"
+            return True, "Instruction completed"
 
-            return True, "Instruction sent"
+        elif exit_code == 130:
+            # User interrupt - don't auto-restart
+            logger.info(f"Agent interrupted in {self.container_name}")
+            await self._broadcast_output("[System] Agent interrupted by user")
+            return True, "Agent interrupted"
 
-        except Exception as e:
-            logger.exception("Failed to send instruction")
-            return False, f"Failed to send instruction: {e}"
+        else:
+            # Error - check state file for details and potentially restart
+            state_file = self.project_dir / ".agent_state.json"
+            error_info = "unknown error"
+
+            if state_file.exists():
+                try:
+                    state = json.loads(state_file.read_text())
+                    error_info = state.get("error", "unknown error")
+                    error_type = state.get("error_type", "Exception")
+                    logger.error(f"Agent failed in {self.container_name}: {error_type}: {error_info}")
+                    await self._broadcast_output(f"[System] Agent error: {error_type}: {error_info}")
+                except Exception as e:
+                    logger.warning(f"Failed to read agent state: {e}")
+
+            # Auto-restart if user started and features remain
+            if self._user_started and self.has_open_features():
+                await self._broadcast_output("[System] Auto-restarting after error...")
+                await asyncio.sleep(5)  # Brief delay before restart
+                return await self.restart_agent()
+            else:
+                return False, f"Agent failed: {error_info}"
 
     async def remove(self) -> tuple[bool, str]:
         """

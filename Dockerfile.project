@@ -1,14 +1,14 @@
 # =============================================================================
 # Project Container Dockerfile
 # =============================================================================
-# Minimal container for running Claude Code on a single project.
-# No Python backend, no MCP servers - just Claude Code + beads CLI.
+# Container for running Claude Agent SDK on a single project.
+# Uses Python-based agent_app.py with retry logic and error recovery.
 #
 # Usage:
 #   docker build -f Dockerfile.project -t autocoder-project .
 #   docker run -d --name autocoder-{project} -v /path/to/project:/project autocoder-project
 
-FROM ubuntu:24.04
+FROM python:3.11-slim-bookworm
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -16,7 +16,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Disable beads daemon in containers (avoids stale lock file issues)
 ENV BD_NO_DAEMON=true
 
-# Install essentials
+# Install essentials (including procps for pgrep health checks)
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     nodejs \
     npm \
     sudo \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user (required for Claude Code --dangerously-skip-permissions)
@@ -33,12 +34,18 @@ RUN apt-get update && apt-get install -y \
 RUN useradd --uid 1001 -m coder \
     && echo "coder ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Install Claude Code CLI globally
+# Install Claude Code CLI globally (required by Agent SDK)
 RUN npm install -g @anthropic-ai/claude-code
+
+# Install Claude Agent SDK
+RUN pip install --no-cache-dir claude-code-sdk
 
 # Install beads CLI
 RUN curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash \
     && mv /root/.local/bin/bd /usr/local/bin/bd 2>/dev/null || true
+
+# Copy agent application
+COPY agent_app.py /app/agent_app.py
 
 # Configure git for beads operations (for root, during build)
 RUN git config --global user.email "docker@autocoder.local" \
