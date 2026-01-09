@@ -67,6 +67,10 @@ RUN cat > /entrypoint.sh << 'EOF'
 # 002 = files 664, dirs 775 (group and world readable)
 umask 002
 
+# Update Claude Code to latest version at startup
+echo "Updating Claude Code to latest version..."
+npm update -g @anthropic-ai/claude-code 2>/dev/null || true
+
 # Copy Claude credentials from mounted location (if exists)
 # Use shopt to enable dotglob for copying hidden files like .credentials.json
 if [ -d "/tmp/claude-creds" ]; then
