@@ -259,8 +259,21 @@ class ContainerManager:
 
             # Send instruction if provided
             if instruction:
-                # Give container a moment to fully start
-                await asyncio.sleep(1)
+                # Wait for claude to be available (entrypoint runs npm update)
+                for attempt in range(10):
+                    await asyncio.sleep(2)
+                    check = subprocess.run(
+                        ["docker", "exec", "-u", "coder", self.container_name,
+                         "which", "claude"],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if check.returncode == 0:
+                        break
+                    logger.info(f"Waiting for claude to be ready (attempt {attempt + 1}/10)")
+                else:
+                    return False, "Claude Code not available in container after 20 seconds"
+
                 return await self.send_instruction(instruction)
 
             return True, f"Container {self.container_name} started"
