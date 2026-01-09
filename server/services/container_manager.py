@@ -23,6 +23,9 @@ CONTAINER_IMAGE = "autocoder-project"
 # Idle timeout in minutes
 IDLE_TIMEOUT_MINUTES = 60
 
+# Agent health check interval in seconds (10 minutes)
+AGENT_HEALTH_CHECK_INTERVAL = 600
+
 # Patterns for sensitive data that should be redacted from output
 SENSITIVE_PATTERNS = [
     r'sk-[a-zA-Z0-9]{20,}',  # Anthropic API keys
@@ -74,6 +77,9 @@ class ContainerManager:
         self.started_at: datetime | None = None
         self.last_activity: datetime | None = None
         self._log_task: asyncio.Task | None = None
+
+        # Track if user started this container (for auto-restart monitoring)
+        self._user_started: bool = False
 
         # Callbacks for WebSocket notifications
         self._output_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
@@ -170,6 +176,27 @@ class ContainerManager:
             return 0
         return int((datetime.now() - self.last_activity).total_seconds())
 
+    def is_agent_running(self) -> bool:
+        """Check if the claude process is running inside the container."""
+        if self._status != "running":
+            return False
+        try:
+            result = subprocess.run(
+                ["docker", "exec", self.container_name, "pgrep", "-x", "claude"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            return result.returncode == 0
+        except Exception as e:
+            logger.warning(f"Failed to check agent status: {e}")
+            return False
+
+    @property
+    def user_started(self) -> bool:
+        """Whether the user explicitly started this container."""
+        return self._user_started
+
     async def _broadcast_output(self, line: str) -> None:
         """Broadcast output line to all registered callbacks."""
         with self._callbacks_lock:
@@ -253,6 +280,7 @@ class ContainerManager:
             self.started_at = datetime.now()
             self._update_activity()
             self.status = "running"
+            self._user_started = True  # Mark as user-started for monitoring
 
             # Start log streaming
             self._log_task = asyncio.create_task(self._stream_logs())
@@ -408,6 +436,34 @@ class ContainerManager:
             logger.exception("Failed to remove container")
             return False, f"Failed to remove container: {e}"
 
+    async def restart_agent(self) -> tuple[bool, str]:
+        """
+        Restart the agent inside the container.
+
+        This stops and restarts the container, then sends the coding prompt
+        to restart Claude Code.
+
+        Returns:
+            Tuple of (success, message)
+        """
+        logger.info(f"Restarting agent in container {self.container_name}")
+
+        # Stop the container
+        await self.stop()
+
+        # Read the coding prompt from the project
+        coding_prompt_path = self.project_dir / "prompts" / "coding_prompt.md"
+        if not coding_prompt_path.exists():
+            return False, "No coding_prompt.md found in project"
+
+        try:
+            instruction = coding_prompt_path.read_text()
+        except Exception as e:
+            return False, f"Failed to read coding prompt: {e}"
+
+        # Start container with instruction
+        return await self.start(instruction)
+
     def get_status_dict(self) -> dict:
         """Get current status as a dictionary."""
         self._sync_status()
@@ -416,6 +472,8 @@ class ContainerManager:
             "container_name": self.container_name,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "idle_seconds": self.get_idle_seconds(),
+            "agent_running": self.is_agent_running(),
+            "user_started": self._user_started,
         }
 
 
@@ -530,3 +588,66 @@ def check_image_exists() -> bool:
         return result.returncode == 0
     except Exception:
         return False
+
+
+async def monitor_agent_health() -> list[str]:
+    """
+    Check health of agents in user-started containers and restart if needed.
+
+    Only monitors containers that were explicitly started by the user.
+    If a container is running but the claude process is not, it will be restarted.
+
+    Returns:
+        List of container names that were restarted
+    """
+    restarted = []
+
+    with _managers_lock:
+        managers = list(_managers.values())
+
+    for manager in managers:
+        # Only monitor user-started containers
+        if not manager.user_started:
+            continue
+
+        # Only check running containers
+        if manager.status != "running":
+            continue
+
+        # Check if agent is running
+        if not manager.is_agent_running():
+            logger.warning(
+                f"Agent not running in {manager.container_name}, restarting..."
+            )
+            try:
+                success, message = await manager.restart_agent()
+                if success:
+                    restarted.append(manager.container_name)
+                    logger.info(f"Successfully restarted agent in {manager.container_name}")
+                else:
+                    logger.error(f"Failed to restart agent in {manager.container_name}: {message}")
+            except Exception as e:
+                logger.exception(f"Error restarting agent in {manager.container_name}: {e}")
+
+    return restarted
+
+
+async def start_agent_health_monitor() -> None:
+    """
+    Start a background task that monitors agent health every AGENT_HEALTH_CHECK_INTERVAL seconds.
+
+    This should be called when the server starts.
+    """
+    logger.info(f"Starting agent health monitor (interval: {AGENT_HEALTH_CHECK_INTERVAL}s)")
+
+    while True:
+        try:
+            await asyncio.sleep(AGENT_HEALTH_CHECK_INTERVAL)
+            restarted = await monitor_agent_health()
+            if restarted:
+                logger.info(f"Health check restarted agents: {restarted}")
+        except asyncio.CancelledError:
+            logger.info("Agent health monitor stopped")
+            break
+        except Exception as e:
+            logger.exception(f"Error in agent health monitor: {e}")

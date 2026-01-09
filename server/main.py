@@ -36,7 +36,11 @@ from .routers import (
 )
 from .schemas import SetupStatus
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
-from .services.container_manager import cleanup_all_containers, cleanup_idle_containers
+from .services.container_manager import (
+    cleanup_all_containers,
+    cleanup_idle_containers,
+    start_agent_health_monitor,
+)
 from .websocket import project_websocket
 
 # Idle container check interval (seconds)
@@ -68,8 +72,9 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown."""
     logger.info("Starting Autonomous Coding UI server...")
 
-    # Startup - start idle container monitor
+    # Startup - start background monitors
     idle_monitor_task = asyncio.create_task(idle_container_monitor())
+    health_monitor_task = asyncio.create_task(start_agent_health_monitor())
 
     yield
 
@@ -77,8 +82,13 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down server, cleaning up containers...")
 
     idle_monitor_task.cancel()
+    health_monitor_task.cancel()
     try:
         await idle_monitor_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await health_monitor_task
     except asyncio.CancelledError:
         pass
 
