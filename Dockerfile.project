@@ -46,11 +46,13 @@ RUN git config --global user.email "docker@autocoder.local" \
 RUN mkdir -p /home/coder/.claude \
     && chown -R coder:coder /home/coder
 
-# Configure git for coder user
+# Configure git for coder user and set permissive umask
 USER coder
 RUN git config --global user.email "docker@autocoder.local" \
     && git config --global user.name "AutoCoder Docker" \
-    && git config --global init.defaultBranch main
+    && git config --global init.defaultBranch main \
+    && echo "umask 002" >> ~/.bashrc \
+    && echo "umask 002" >> ~/.profile
 
 # Switch back to root for runtime volume mounting
 USER root
@@ -61,6 +63,10 @@ WORKDIR /project
 # Create entrypoint script to copy credentials at startup
 RUN cat > /entrypoint.sh << 'EOF'
 #!/bin/bash
+# Set permissive umask so files are readable by host user
+# 002 = files 664, dirs 775 (group and world readable)
+umask 002
+
 # Copy Claude credentials from mounted location (if exists)
 # Use shopt to enable dotglob for copying hidden files like .credentials.json
 if [ -d "/tmp/claude-creds" ]; then
@@ -69,6 +75,12 @@ if [ -d "/tmp/claude-creds" ]; then
     shopt -u dotglob
     chown -R coder:coder /home/coder/.claude
 fi
+
+# Make .beads directory world-readable if it exists
+if [ -d "/project/.beads" ]; then
+    chmod -R a+rX /project/.beads 2>/dev/null || true
+fi
+
 # Keep container running
 exec tail -f /dev/null
 EOF

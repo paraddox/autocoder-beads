@@ -27,6 +27,18 @@ def has_features(project_dir: Path) -> bool:
     Returns True if .beads/ exists with issues.
     Returns False if no features exist (initializer needs to run).
     """
+    # Direct JSONL check - most reliable, avoids bd CLI issues
+    issues_file = project_dir / ".beads" / "issues.jsonl"
+    if issues_file.exists():
+        try:
+            with open(issues_file, 'r') as f:
+                for line in f:
+                    if line.strip():
+                        return True  # At least one issue exists
+        except (PermissionError, OSError):
+            pass
+
+    # Fallback to client
     client = BeadsClient(project_dir)
     return client.has_features()
 

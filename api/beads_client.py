@@ -47,7 +47,8 @@ class BeadsClient:
         args: list[str],
         check: bool = True,
         capture_output: bool = True,
-        use_db_flag: bool = True
+        use_db_flag: bool = True,
+        timeout: int | None = None
     ) -> subprocess.CompletedProcess:
         """
         Execute a bd command in the project directory.
@@ -57,6 +58,7 @@ class BeadsClient:
             check: Raise on non-zero exit code
             capture_output: Capture stdout/stderr
             use_db_flag: Whether to add --db flag (not needed for init)
+            timeout: Timeout in seconds (None for no timeout)
 
         Returns:
             CompletedProcess with command results
@@ -71,6 +73,7 @@ class BeadsClient:
             check=check,
             capture_output=capture_output,
             text=True,
+            timeout=timeout,
         )
 
     def _parse_json_output(self, result: subprocess.CompletedProcess) -> list | dict:
@@ -95,10 +98,16 @@ class BeadsClient:
         else:
             return "P4"
 
-    def _beads_to_priority(self, beads_priority: str) -> int:
-        """Convert beads P0-P4 format to numeric priority."""
+    def _beads_to_priority(self, beads_priority: str | int) -> int:
+        """Convert beads P0-P4 format or numeric priority to int."""
+        # Handle numeric priority directly
+        if isinstance(beads_priority, int):
+            return beads_priority
+        if isinstance(beads_priority, str) and beads_priority.isdigit():
+            return int(beads_priority)
+        # Handle P0-P4 format
         mapping = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "P4": 4}
-        return mapping.get(beads_priority.upper(), 4)
+        return mapping.get(str(beads_priority).upper(), 4)
 
     def _steps_to_description(self, description: str, steps: list[str]) -> str:
         """Append steps as markdown checklist to description."""
@@ -170,7 +179,61 @@ class BeadsClient:
 
     def is_initialized(self) -> bool:
         """Check if beads is initialized in the project directory."""
-        return self.beads_dir.exists() and (self.beads_dir / "config.yaml").exists()
+        try:
+            return self.beads_dir.exists() and (self.beads_dir / "config.yaml").exists()
+        except PermissionError:
+            # Fallback: check if issues.jsonl exists
+            try:
+                return self.beads_dir.exists() and (self.beads_dir / "issues.jsonl").exists()
+            except PermissionError:
+                return False
+
+    def _read_issues_from_jsonl(self) -> list[dict]:
+        """
+        Read issues directly from the JSONL file.
+
+        This is a fallback when the bd CLI is unavailable or crashing.
+        """
+        jsonl_path = self.beads_dir / "issues.jsonl"
+        if not jsonl_path.exists():
+            return []
+
+        issues = []
+        try:
+            with open(jsonl_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        issues.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        except (PermissionError, OSError):
+            return []
+
+        return issues
+
+    def _get_stats_from_jsonl(self) -> dict:
+        """Get statistics by reading directly from JSONL file."""
+        issues = self._read_issues_from_jsonl()
+        if not issues:
+            return {"passing": 0, "in_progress": 0, "total": 0, "percentage": 0.0}
+
+        from collections import Counter
+        statuses = Counter(issue.get('status', 'open') for issue in issues)
+
+        closed = statuses.get('closed', 0)
+        in_progress = statuses.get('in_progress', 0)
+        total = len(issues)
+        percentage = round((closed / total) * 100, 1) if total > 0 else 0.0
+
+        return {
+            "passing": closed,
+            "in_progress": in_progress,
+            "total": total,
+            "percentage": percentage,
+        }
 
     def _ensure_git_repo(self) -> bool:
         """Ensure the project directory is a git repository."""
@@ -227,9 +290,10 @@ class BeadsClient:
             return {"passing": 0, "in_progress": 0, "total": 0, "percentage": 0.0}
 
         try:
-            result = self._run_bd(["stats", "--json"], check=False)
+            result = self._run_bd(["stats", "--json"], check=False, timeout=5)
             if result.returncode != 0:
-                return {"passing": 0, "in_progress": 0, "total": 0, "percentage": 0.0}
+                # CLI failed, try JSONL fallback
+                return self._get_stats_from_jsonl()
 
             stats = self._parse_json_output(result)
             if isinstance(stats, dict):
@@ -246,10 +310,11 @@ class BeadsClient:
                     "total": total,
                     "percentage": percentage,
                 }
-        except Exception:
+        except (subprocess.TimeoutExpired, Exception):
+            # CLI crashed or timed out, use JSONL fallback
             pass
 
-        return {"passing": 0, "in_progress": 0, "total": 0, "percentage": 0.0}
+        return self._get_stats_from_jsonl()
 
     def has_features(self) -> bool:
         """Check if any features exist."""
@@ -572,6 +637,13 @@ class BeadsClient:
         except Exception:
             return None
 
+    def _list_all_from_jsonl(self) -> list[FeatureDict]:
+        """List all features by reading directly from JSONL file."""
+        issues = self._read_issues_from_jsonl()
+        features = [self._issue_to_feature(issue) for issue in issues]
+        features.sort(key=lambda f: f.get("priority", 999))
+        return features
+
     def list_all(self) -> list[FeatureDict]:
         """
         List all features (open, in_progress, closed).
@@ -583,21 +655,30 @@ class BeadsClient:
             return []
 
         all_features = []
+        cli_failed = False
 
         for status in ["open", "in_progress", "closed"]:
             try:
                 result = self._run_bd([
                     "list",
                     f"--status={status}",
+                    "--limit", "0",  # Unlimited results (default is 50)
                     "--json",
-                ], check=False)
+                ], check=False, timeout=5)
 
                 if result.returncode == 0:
                     issues = self._parse_json_output(result)
                     for issue in issues:
                         all_features.append(self._issue_to_feature(issue))
-            except Exception:
-                continue
+                else:
+                    cli_failed = True
+            except (subprocess.TimeoutExpired, Exception):
+                cli_failed = True
+                break
+
+        # If CLI failed for any status, fall back to JSONL
+        if cli_failed and not all_features:
+            return self._list_all_from_jsonl()
 
         # Sort by priority
         all_features.sort(key=lambda f: f.get("priority", 999))
