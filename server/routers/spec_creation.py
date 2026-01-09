@@ -14,7 +14,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ValidationError
 
-from ..schemas import ImageAttachment
+from ..schemas import ImageAttachment, TextAttachment, FileAttachment
 from ..services.spec_chat_session import (
     SpecChatSession,
     create_session,
@@ -253,13 +253,17 @@ async def spec_chat_websocket(websocket: WebSocket, project_name: str):
 
                     user_content = message.get("content", "").strip()
 
-                    # Parse attachments if present
-                    attachments: list[ImageAttachment] = []
+                    # Parse attachments if present (supports both image and text files)
+                    attachments: list[FileAttachment] = []
                     raw_attachments = message.get("attachments", [])
                     if raw_attachments:
                         try:
                             for raw_att in raw_attachments:
-                                attachments.append(ImageAttachment(**raw_att))
+                                # Check if it's a text attachment (has isText=True or textContent)
+                                if raw_att.get("isText") or "textContent" in raw_att:
+                                    attachments.append(TextAttachment(**raw_att))
+                                else:
+                                    attachments.append(ImageAttachment(**raw_att))
                         except (ValidationError, Exception) as e:
                             logger.warning(f"Invalid attachment data: {e}")
                             await websocket.send_json({

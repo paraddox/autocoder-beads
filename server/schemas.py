@@ -188,15 +188,24 @@ class WSAgentStatusMessage(BaseModel):
 # Spec Chat Schemas
 # ============================================================================
 
-# Maximum image file size: 5 MB
-MAX_IMAGE_SIZE = 5 * 1024 * 1024
+# Maximum file sizes
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB for images
+MAX_TEXT_SIZE = 1 * 1024 * 1024   # 1 MB for text files
+
+# Supported MIME types
+IMAGE_MIME_TYPES = Literal['image/jpeg', 'image/png']
+TEXT_MIME_TYPES = Literal[
+    'text/plain', 'text/markdown', 'text/csv', 'application/json',
+    'text/html', 'text/css', 'text/javascript', 'application/xml'
+]
 
 
 class ImageAttachment(BaseModel):
     """Image attachment from client for spec creation chat."""
     filename: str = Field(..., min_length=1, max_length=255)
-    mimeType: Literal['image/jpeg', 'image/png']
+    mimeType: IMAGE_MIME_TYPES
     base64Data: str
+    isText: Literal[False] = False
 
     @field_validator('base64Data')
     @classmethod
@@ -214,6 +223,30 @@ class ImageAttachment(BaseModel):
             if 'Image size' in str(e):
                 raise
             raise ValueError(f'Invalid base64 data: {e}')
+
+
+class TextAttachment(BaseModel):
+    """Text file attachment from client for spec creation chat."""
+    filename: str = Field(..., min_length=1, max_length=255)
+    mimeType: TEXT_MIME_TYPES
+    textContent: str
+    isText: Literal[True] = True
+
+    @field_validator('textContent')
+    @classmethod
+    def validate_text_size(cls, v: str) -> str:
+        """Validate that text content is within size limit."""
+        size = len(v.encode('utf-8'))
+        if size > MAX_TEXT_SIZE:
+            raise ValueError(
+                f'Text file size ({size / (1024 * 1024):.1f} MB) exceeds '
+                f'maximum of {MAX_TEXT_SIZE // (1024 * 1024)} MB'
+            )
+        return v
+
+
+# Union type for any attachment
+FileAttachment = ImageAttachment | TextAttachment
 
 
 # ============================================================================

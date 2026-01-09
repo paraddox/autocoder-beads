@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { ChatMessage, ImageAttachment, SpecChatServerMessage, SpecQuestion } from '../lib/types'
+import type { ChatMessage, ImageAttachment, TextAttachment, FileAttachment, SpecChatServerMessage, SpecQuestion } from '../lib/types'
 import { getSpecStatus } from '../lib/api'
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
@@ -22,7 +22,7 @@ interface UseSpecChatReturn {
   currentQuestions: SpecQuestion[] | null
   currentToolId: string | null
   start: () => void
-  sendMessage: (content: string, attachments?: ImageAttachment[]) => void
+  sendMessage: (content: string, attachments?: FileAttachment[]) => void
   sendAnswer: (answers: Record<string, string | string[]>) => void
   disconnect: () => void
 }
@@ -364,7 +364,7 @@ export function useSpecChat({
     setTimeout(checkAndSend, 100)
   }, [connect])
 
-  const sendMessage = useCallback((content: string, attachments?: ImageAttachment[]) => {
+  const sendMessage = useCallback((content: string, attachments?: FileAttachment[]) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       onError?.('Not connected')
       return
@@ -387,19 +387,36 @@ export function useSpecChat({
     setCurrentToolId(null)
     setIsLoading(true)
 
-    // Build message payload
-    const payload: { type: string; content: string; attachments?: Array<{ filename: string; mimeType: string; base64Data: string }> } = {
+    // Build message payload - supports both image and text attachments
+    type AttachmentPayload =
+      | { filename: string; mimeType: string; base64Data: string; isText?: false }
+      | { filename: string; mimeType: string; textContent: string; isText: true }
+
+    const payload: { type: string; content: string; attachments?: AttachmentPayload[] } = {
       type: 'message',
       content,
     }
 
-    // Add attachments if present (send base64 data, not preview URL)
+    // Add attachments if present
     if (attachments && attachments.length > 0) {
-      payload.attachments = attachments.map((a) => ({
-        filename: a.filename,
-        mimeType: a.mimeType,
-        base64Data: a.base64Data,
-      }))
+      payload.attachments = attachments.map((a) => {
+        if (a.isText) {
+          // Text attachment
+          return {
+            filename: a.filename,
+            mimeType: a.mimeType,
+            textContent: (a as TextAttachment).textContent,
+            isText: true as const,
+          }
+        } else {
+          // Image attachment
+          return {
+            filename: a.filename,
+            mimeType: a.mimeType,
+            base64Data: (a as ImageAttachment).base64Data,
+          }
+        }
+      })
     }
 
     // Send to server

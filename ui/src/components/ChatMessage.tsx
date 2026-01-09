@@ -5,8 +5,8 @@
  * Supports user, assistant, and system messages with soft editorial styling.
  */
 
-import { Bot, User, Info } from 'lucide-react'
-import type { ChatMessage as ChatMessageType } from '../lib/types'
+import { Bot, User, Info, FileText } from 'lucide-react'
+import type { ChatMessage as ChatMessageType, ImageAttachment } from '../lib/types'
 
 interface ChatMessageProps {
   message: ChatMessageType
@@ -141,7 +141,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
               </div>
             )}
 
-            {/* Display image attachments */}
+            {/* Display attachments (images and text files) */}
             {attachments && attachments.length > 0 && (
               <div className={`flex flex-wrap gap-2 ${content ? 'mt-3' : ''}`}>
                 {attachments.map((attachment) => (
@@ -149,16 +149,29 @@ export function ChatMessage({ message }: ChatMessageProps) {
                     key={attachment.id}
                     className="border border-[var(--color-border)] p-1 bg-[var(--color-bg-elevated)] rounded-md shadow-sm"
                   >
-                    <img
-                      src={attachment.previewUrl}
-                      alt={attachment.filename}
-                      className="max-w-48 max-h-48 object-contain cursor-pointer hover:opacity-90 transition-opacity rounded"
-                      onClick={() => window.open(attachment.previewUrl, '_blank')}
-                      title={`${attachment.filename} (click to enlarge)`}
-                    />
-                    <span className="text-xs text-[var(--color-text-secondary)] block mt-1 text-center">
-                      {attachment.filename}
-                    </span>
+                    {attachment.isText ? (
+                      // Text file display
+                      <div className="flex items-center gap-2 px-2 py-1">
+                        <FileText size={16} className="text-[var(--color-text-secondary)]" />
+                        <span className="text-xs text-[var(--color-text-secondary)]">
+                          {attachment.filename}
+                        </span>
+                      </div>
+                    ) : (
+                      // Image display
+                      <>
+                        <img
+                          src={(attachment as ImageAttachment).previewUrl}
+                          alt={attachment.filename}
+                          className="max-w-48 max-h-48 object-contain cursor-pointer hover:opacity-90 transition-opacity rounded"
+                          onClick={() => window.open((attachment as ImageAttachment).previewUrl, '_blank')}
+                          title={`${attachment.filename} (click to enlarge)`}
+                        />
+                        <span className="text-xs text-[var(--color-text-secondary)] block mt-1 text-center">
+                          {attachment.filename}
+                        </span>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
