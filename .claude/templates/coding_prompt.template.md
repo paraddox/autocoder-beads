@@ -67,7 +67,7 @@ git add . && git commit -m "Implement: <feature name>"
 
 **Only do this AFTER completing Step 3.**
 
-Quick regression check on 3 previously completed features (NOT the one you just finished):
+Quick regression check on 3 previously CLOSED features (NOT the one you just finished):
 
 ```bash
 bd list --status=closed --limit 4
@@ -75,8 +75,11 @@ bd list --status=closed --limit 4
 
 Pick 3 features (skip the one you just closed) and quickly verify they still work.
 
+**⚠️ VERIFICATION RULES:**
+- **ONLY verify CLOSED features** - NEVER verify open or in_progress features
+- **NEVER close a feature during verification** - You can only close a feature you implemented in Step 3
+- If a verified feature is broken, note it and fix it, but do NOT change its status
 - Spend MAX 5 minutes total on verification
-- If something is broken, note it and fix it
 - Do NOT get stuck in verification mode
 
 ### STEP 5: REPEAT OR END SESSION
@@ -98,8 +101,10 @@ Update `claude-progress.txt` with what you accomplished.
 
 1. **IMPLEMENT FIRST** - Always implement a feature before doing verification
 2. **MARK IN_PROGRESS** - Always run `bd update <id> --status=in_progress` before coding
-3. **LIMIT VERIFICATION** - Max 3 features, max 5 minutes, only AFTER implementing
-4. **NO RABBIT HOLES** - Don't spend hours testing without implementing
+3. **ONLY CLOSE WHAT YOU IMPLEMENT** - Never close a feature unless you implemented it in Step 3
+4. **VERIFY ONLY CLOSED FEATURES** - During verification, only check features with status=closed
+5. **LIMIT VERIFICATION** - Max 3 features, max 5 minutes, only AFTER implementing
+6. **NO RABBIT HOLES** - Don't spend hours testing without implementing
 
 ## TEST-DRIVEN MINDSET
 
