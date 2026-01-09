@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useProjects, useFeatures, useAgentStatus } from './hooks/useProjects'
+import { useProjects, useFeatures, useAgentStatus, useReopenFeature } from './hooks/useProjects'
 import { useProjectWebSocket } from './hooks/useWebSocket'
 import { useFeatureSound } from './hooks/useFeatureSound'
 import { useCelebration } from './hooks/useCelebration'
@@ -13,6 +13,7 @@ import { ProgressDashboard } from './components/ProgressDashboard'
 import { SetupWizard } from './components/SetupWizard'
 import { AddFeatureForm } from './components/AddFeatureForm'
 import { FeatureModal } from './components/FeatureModal'
+import { FeatureEditModal } from './components/FeatureEditModal'
 import { DebugLogViewer } from './components/DebugLogViewer'
 import { AgentThought } from './components/AgentThought'
 import { AssistantFAB } from './components/AssistantFAB'
@@ -50,9 +51,13 @@ function App() {
   // Delete project modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false)
 
+  // Edit feature modal state
+  const [editingFeature, setEditingFeature] = useState<Feature | null>(null)
+
   const { data: projects, isLoading: projectsLoading, refetch: refetchProjects } = useProjects()
   const { data: features } = useFeatures(selectedProject)
   const { data: agentStatusData } = useAgentStatus(selectedProject)
+  const reopenFeature = useReopenFeature(selectedProject ?? '')
   const wsState = useProjectWebSocket(selectedProject)
   const { theme, toggleTheme } = useTheme()
 
@@ -115,6 +120,16 @@ function App() {
     refetchProjects()
   }, [handleSelectProject, refetchProjects])
 
+  // Handle edit feature
+  const handleEditFeature = useCallback((feature: Feature) => {
+    setEditingFeature(feature)
+  }, [])
+
+  // Handle reopen feature
+  const handleReopenFeature = useCallback((feature: Feature) => {
+    reopenFeature.mutate(feature.id)
+  }, [reopenFeature])
+
   // Validate stored project exists (clear if project was deleted)
   useEffect(() => {
     if (selectedProject && projects && !projects.some(p => p.name === selectedProject)) {
@@ -152,6 +167,8 @@ function App() {
       if (e.key === 'Escape') {
         if (assistantOpen) {
           setAssistantOpen(false)
+        } else if (editingFeature) {
+          setEditingFeature(null)
         } else if (showAddFeature) {
           setShowAddFeature(false)
         } else if (selectedFeature) {
@@ -164,7 +181,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedProject, showAddFeature, selectedFeature, debugOpen, assistantOpen])
+  }, [selectedProject, showAddFeature, selectedFeature, editingFeature, debugOpen, assistantOpen])
 
   // Combine WebSocket progress with feature data
   const progress = wsState.progress.total > 0 ? wsState.progress : {
@@ -300,6 +317,9 @@ function App() {
             <KanbanBoard
               features={features}
               onFeatureClick={setSelectedFeature}
+              agentRunning={wsState.agentStatus === 'running'}
+              onEditFeature={handleEditFeature}
+              onReopenFeature={handleReopenFeature}
             />
           </div>
         )}
@@ -319,6 +339,15 @@ function App() {
           feature={selectedFeature}
           projectName={selectedProject}
           onClose={() => setSelectedFeature(null)}
+        />
+      )}
+
+      {/* Feature Edit Modal */}
+      {editingFeature && selectedProject && (
+        <FeatureEditModal
+          feature={editingFeature}
+          projectName={selectedProject}
+          onClose={() => setEditingFeature(null)}
         />
       )}
 

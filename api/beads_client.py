@@ -696,3 +696,107 @@ class BeadsClient:
 
         except Exception:
             return []
+
+    def reopen(self, feature_id: str) -> FeatureDict | None:
+        """
+        Reopen a closed feature (set status back to open).
+
+        Args:
+            feature_id: The feature/issue ID
+
+        Returns:
+            Updated feature dict or None on failure
+        """
+        try:
+            result = self._run_bd([
+                "reopen", feature_id,
+            ], check=False)
+
+            if result.returncode != 0:
+                return None
+
+            return self.get_feature(feature_id)
+
+        except Exception:
+            return None
+
+    def update(
+        self,
+        feature_id: str,
+        name: str | None = None,
+        description: str | None = None,
+        priority: int | None = None,
+        category: str | None = None,
+        steps: list[str] | None = None,
+    ) -> FeatureDict | None:
+        """
+        Update a feature's fields.
+
+        Args:
+            feature_id: The feature/issue ID
+            name: New title (optional)
+            description: New description (optional)
+            priority: New priority (optional)
+            category: New category (optional)
+            steps: New steps list (optional)
+
+        Returns:
+            Updated feature dict or None on failure
+        """
+        # Get current feature to preserve unchanged fields
+        current = self.get_feature(feature_id)
+        if not current:
+            return None
+
+        try:
+            # Build update command with provided fields
+            args = ["update", feature_id]
+
+            if name is not None:
+                args.extend(["--title", name])
+
+            # Build full description with steps
+            if description is not None or steps is not None:
+                new_description = description if description is not None else current.get("description", "")
+                new_steps = steps if steps is not None else current.get("steps", [])
+                full_description = self._steps_to_description(new_description, new_steps)
+                args.extend(["--description", full_description])
+
+            if priority is not None:
+                beads_priority = self._priority_to_beads(priority)
+                args.extend(["--priority", beads_priority])
+
+            result = self._run_bd(args, check=False)
+
+            if result.returncode != 0:
+                return None
+
+            # Update category label if changed
+            if category is not None:
+                old_category = current.get("category", "")
+                if old_category:
+                    self._run_bd([
+                        "label", feature_id,
+                        "--remove", f"category:{old_category}",
+                    ], check=False)
+                self._run_bd([
+                    "label", feature_id,
+                    "--add", f"category:{category}",
+                ], check=False)
+
+            # Update priority label if changed
+            if priority is not None:
+                old_priority = current.get("priority", 999)
+                self._run_bd([
+                    "label", feature_id,
+                    "--remove", f"priority:{old_priority}",
+                ], check=False)
+                self._run_bd([
+                    "label", feature_id,
+                    "--add", f"priority:{priority}",
+                ], check=False)
+
+            return self.get_feature(feature_id)
+
+        except Exception:
+            return None

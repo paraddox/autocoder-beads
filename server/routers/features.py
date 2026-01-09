@@ -16,6 +16,7 @@ from ..schemas import (
     FeatureCreate,
     FeatureListResponse,
     FeatureResponse,
+    FeatureUpdate,
 )
 
 # Add parent to path for imports
@@ -270,3 +271,93 @@ async def skip_feature(project_name: str, feature_id: str):
     except Exception:
         logger.exception("Failed to skip feature")
         raise HTTPException(status_code=500, detail="Failed to skip feature")
+
+
+@router.patch("/{feature_id}", response_model=FeatureResponse)
+async def update_feature(project_name: str, feature_id: str, update: FeatureUpdate):
+    """
+    Update a feature's fields.
+
+    Only the provided fields will be updated; others remain unchanged.
+    """
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found in registry")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    client = _get_beads_client(project_dir)
+
+    if not client.is_initialized():
+        raise HTTPException(status_code=404, detail="No features found")
+
+    try:
+        # Check if feature exists
+        feature = client.get_feature(feature_id)
+        if not feature:
+            raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+
+        # Update the feature
+        updated = client.update(
+            feature_id,
+            name=update.name,
+            description=update.description,
+            priority=update.priority,
+            category=update.category,
+            steps=update.steps,
+        )
+
+        if not updated:
+            raise HTTPException(status_code=500, detail="Failed to update feature")
+
+        return feature_to_response(updated)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to update feature")
+        raise HTTPException(status_code=500, detail="Failed to update feature")
+
+
+@router.patch("/{feature_id}/reopen")
+async def reopen_feature(project_name: str, feature_id: str):
+    """
+    Reopen a completed feature (move it back to pending).
+    """
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found in registry")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    client = _get_beads_client(project_dir)
+
+    if not client.is_initialized():
+        raise HTTPException(status_code=404, detail="No features found")
+
+    try:
+        # Check if feature exists and is closed
+        feature = client.get_feature(feature_id)
+        if not feature:
+            raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+
+        if not feature.get("passes"):
+            raise HTTPException(status_code=400, detail="Feature is not completed, cannot reopen")
+
+        # Reopen the feature
+        reopened = client.reopen(feature_id)
+
+        if not reopened:
+            raise HTTPException(status_code=500, detail="Failed to reopen feature")
+
+        return {"success": True, "message": f"Feature {feature_id} reopened"}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to reopen feature")
+        raise HTTPException(status_code=500, detail="Failed to reopen feature")

@@ -94,6 +94,15 @@ class FeatureCreate(FeatureBase):
     priority: int | None = None
 
 
+class FeatureUpdate(BaseModel):
+    """Request schema for updating a feature."""
+    name: str | None = None
+    description: str | None = None
+    category: str | None = None
+    priority: int | None = None
+    steps: list[str] | None = None
+
+
 class FeatureResponse(FeatureBase):
     """Response schema for a feature."""
     id: str  # beads uses string IDs like "feat-1"

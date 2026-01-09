@@ -1,10 +1,17 @@
-import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, Pencil, RotateCcw } from 'lucide-react'
 import type { Feature } from '../lib/types'
 
 interface FeatureCardProps {
   feature: Feature
   onClick: () => void
   isInProgress?: boolean
+  // Action visibility
+  agentRunning?: boolean
+  showEdit?: boolean
+  showReopen?: boolean
+  // Action callbacks
+  onEdit?: () => void
+  onReopen?: () => void
 }
 
 // Category color palette names (maps to CSS variables)
@@ -19,8 +26,27 @@ function getCategoryPalette(category: string): typeof CATEGORY_PALETTES[number] 
   return CATEGORY_PALETTES[Math.abs(hash) % CATEGORY_PALETTES.length]
 }
 
-export function FeatureCard({ feature, onClick, isInProgress }: FeatureCardProps) {
+export function FeatureCard({
+  feature,
+  onClick,
+  isInProgress,
+  agentRunning = false,
+  showEdit = false,
+  showReopen = false,
+  onEdit,
+  onReopen,
+}: FeatureCardProps) {
   const palette = getCategoryPalette(feature.category)
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onEdit?.()
+  }
+
+  const handleReopen = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onReopen?.()
+  }
 
   return (
     <button
@@ -58,23 +84,50 @@ export function FeatureCard({ feature, onClick, isInProgress }: FeatureCardProps
         {feature.description}
       </p>
 
-      {/* Status */}
-      <div className="flex items-center gap-2 text-sm">
-        {isInProgress ? (
-          <>
-            <Loader2 size={14} className="animate-spin text-[var(--color-progress)]" />
-            <span className="text-[var(--color-progress)] font-medium">Processing...</span>
-          </>
-        ) : feature.passes ? (
-          <>
-            <CheckCircle2 size={14} className="text-[var(--color-done)]" />
-            <span className="text-[var(--color-done)] font-medium">Complete</span>
-          </>
-        ) : (
-          <>
-            <Circle size={14} className="text-[var(--color-text-muted)]" />
-            <span className="text-[var(--color-text-muted)]">Pending</span>
-          </>
+      {/* Status and Actions Row */}
+      <div className="flex items-center justify-between gap-2">
+        {/* Status */}
+        <div className="flex items-center gap-2 text-sm">
+          {isInProgress ? (
+            <>
+              <Loader2 size={14} className="animate-spin text-[var(--color-progress)]" />
+              <span className="text-[var(--color-progress)] font-medium">Processing...</span>
+            </>
+          ) : feature.passes ? (
+            <>
+              <CheckCircle2 size={14} className="text-[var(--color-done)]" />
+              <span className="text-[var(--color-done)] font-medium">Complete</span>
+            </>
+          ) : (
+            <>
+              <Circle size={14} className="text-[var(--color-text-muted)]" />
+              <span className="text-[var(--color-text-muted)]">Pending</span>
+            </>
+          )}
+        </div>
+
+        {/* Action buttons - only show when agent is not running */}
+        {!agentRunning && (showEdit || showReopen) && (
+          <div className="flex items-center gap-1">
+            {showEdit && (
+              <button
+                onClick={handleEdit}
+                className="p-1.5 rounded hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
+                title="Edit feature"
+              >
+                <Pencil size={14} />
+              </button>
+            )}
+            {showReopen && (
+              <button
+                onClick={handleReopen}
+                className="p-1.5 rounded hover:bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] hover:text-[var(--color-warning)] transition-colors"
+                title="Reopen feature"
+              >
+                <RotateCcw size={14} />
+              </button>
+            )}
+          </div>
         )}
       </div>
     </button>
