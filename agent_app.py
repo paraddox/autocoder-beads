@@ -22,8 +22,8 @@ from pathlib import Path
 
 from claude_code_sdk import query, ClaudeCodeOptions
 
-# State file for crash recovery (in project directory)
-STATE_FILE = Path("/project/.agent_state.json")
+# State file for crash recovery (in coder's home, not project dir due to permissions)
+STATE_FILE = Path("/home/coder/.agent_state.json")
 
 
 def save_state(state: dict) -> None:
