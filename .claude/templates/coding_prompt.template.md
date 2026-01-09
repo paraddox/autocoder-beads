@@ -3,6 +3,23 @@
 You are continuing work on a long-running autonomous development task.
 This is a FRESH context window - you have no memory of previous sessions.
 
+---
+
+## ⚠️ MANDATORY BEADS WORKFLOW - NEVER IGNORE
+
+**The beads workflow in this document is NOT optional.** You MUST follow it exactly:
+
+1. **ALWAYS run `bd ready`** to get the next feature
+2. **ALWAYS run `bd update <id> --status=in_progress`** BEFORE writing any code
+3. **ALWAYS run `bd close <id>`** only AFTER thorough verification
+4. **ALWAYS run `bd sync`** at the end of your session
+
+**Failure to follow this workflow breaks the monitoring system.** The UI shows users what you're working on by reading beads status. If you skip these commands, users cannot monitor your progress.
+
+**This workflow is your PRIMARY communication channel with users.** Respect it.
+
+---
+
 ### STEP 1: GET YOUR BEARINGS (MANDATORY)
 
 Start by orienting yourself:
@@ -75,9 +92,31 @@ For example, if this were a chat app, you should perform a test that logs into t
   - Missing hover states
   - Console errors
 
-### STEP 4: CHOOSE ONE FEATURE TO IMPLEMENT
+### STEP 4: CHOOSE AND CLAIM A FEATURE
 
-#### TEST-DRIVEN DEVELOPMENT MINDSET (CRITICAL)
+#### 4.1 Get the Next Feature
+
+```bash
+# Get the highest-priority pending feature
+bd ready
+```
+
+#### 4.2 MANDATORY: Mark as In Progress BEFORE Any Work
+
+**🚨 CRITICAL: You MUST run this command BEFORE writing any code:**
+
+```bash
+bd update <feature-id> --status=in_progress
+```
+
+This is **NOT OPTIONAL**. The UI monitors which features are in_progress to show users what you're currently working on. Skipping this step breaks the monitoring system.
+
+**Workflow:**
+1. Run `bd ready` → get feature ID
+2. Run `bd update <id> --status=in_progress` → **IMMEDIATELY, before anything else**
+3. Then start implementing
+
+#### 4.3 TEST-DRIVEN DEVELOPMENT MINDSET (CRITICAL)
 
 Features are **test cases** that drive development. This is test-driven development:
 
@@ -89,20 +128,6 @@ Features are **test cases** that drive development. This is test-driven developm
 **Example:** Feature says "User can filter flashcards by difficulty level"
 - WRONG: "Flashcard page doesn't exist yet" → skip feature
 - RIGHT: "Flashcard page doesn't exist yet" → build flashcard page → implement filter → test feature
-
-Get the next feature to implement:
-
-```bash
-# Get the highest-priority pending feature
-bd ready
-```
-
-Once you've chosen a feature, **immediately mark it as in-progress**:
-
-```bash
-# Mark feature as in-progress to prevent other sessions from working on it
-bd update <feature-id> --status=in_progress
-```
 
 Focus on completing one feature perfectly and completing its testing steps in this session before moving on to other features.
 It's ok if you only complete one feature in this session, as there will be more sessions later that continue to make progress.

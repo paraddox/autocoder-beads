@@ -2,6 +2,22 @@
 
 This project uses **beads** for feature/issue tracking. All features are stored in `.beads/` directory.
 
+## ⚠️ MANDATORY WORKFLOW - NEVER SKIP
+
+**You MUST follow this workflow. It is NOT optional.**
+
+The beads commands below are your **PRIMARY communication channel** with the monitoring UI. If you skip these steps, users cannot see your progress.
+
+```
+bd ready                              # 1. Get next feature
+bd update <id> --status=in_progress   # 2. MUST run BEFORE coding
+# ... do the work ...
+bd close <id>                         # 3. Only after verification
+bd sync                               # 4. At session end
+```
+
+**Skipping `--status=in_progress` breaks the UI monitoring. NEVER skip it.**
+
 ## Workflow
 
 ### Starting Work
@@ -16,13 +32,15 @@ This project uses **beads** for feature/issue tracking. All features are stored 
    bd show <feature-id>
    ```
 
-3. Claim the feature:
+3. **REQUIRED: Mark the feature as in_progress BEFORE starting any work:**
    ```bash
    bd update <feature-id> --status=in_progress
    ```
+   This step is MANDATORY. It allows the UI to show what you're currently working on.
 
 ### Implementing Features
 
+**After marking in_progress:**
 1. Read the feature description and requirements
 2. Implement the feature following project conventions
 3. Run linting/type-checking to verify code quality
