@@ -174,7 +174,77 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
         except (OSError, PermissionError) as e:
             print(f"  Warning: Could not create CLAUDE.md: {e}")
 
+    # Ensure .claude/ is gitignored (credentials are sensitive)
+    ensure_gitignore_claude(project_dir)
+
     return project_prompts
+
+
+def sync_claude_credentials(project_dir: Path, source_dir: Path | None = None) -> bool:
+    """
+    Sync Claude credentials from host to project directory.
+
+    Only copies .credentials.json if it differs from source.
+
+    Args:
+        project_dir: The project directory
+        source_dir: Source credentials directory (default: ~/.claude)
+
+    Returns:
+        True if credentials were synced/already current, False on error
+    """
+    import filecmp
+
+    source_dir = source_dir or Path.home() / ".claude"
+    source_creds = source_dir / ".credentials.json"
+
+    if not source_creds.exists():
+        print(f"  Warning: No credentials found at {source_creds}")
+        return False
+
+    project_claude_dir = project_dir / ".claude"
+    project_claude_dir.mkdir(parents=True, exist_ok=True)
+
+    dest_creds = project_claude_dir / ".credentials.json"
+
+    # Compare and copy only if different
+    if dest_creds.exists():
+        try:
+            if filecmp.cmp(source_creds, dest_creds, shallow=False):
+                return True  # Already identical
+        except (OSError, PermissionError):
+            pass  # Force copy on error
+
+    try:
+        shutil.copy2(source_creds, dest_creds)
+        print(f"  Synced credentials to {project_claude_dir}")
+        return True
+    except (OSError, PermissionError) as e:
+        print(f"  Warning: Could not sync credentials: {e}")
+        return False
+
+
+def ensure_gitignore_claude(project_dir: Path) -> None:
+    """Ensure .claude/ is in project's .gitignore (credentials are sensitive)."""
+    gitignore_path = project_dir / ".gitignore"
+    claude_pattern = ".claude/"
+
+    existing_lines = []
+    if gitignore_path.exists():
+        try:
+            existing_lines = gitignore_path.read_text(encoding="utf-8").splitlines()
+            if claude_pattern in existing_lines or ".claude" in existing_lines:
+                return  # Already ignored
+        except (OSError, PermissionError):
+            pass
+
+    try:
+        with open(gitignore_path, "a", encoding="utf-8") as f:
+            if existing_lines and existing_lines[-1]:
+                f.write("\n")
+            f.write(f"\n# Claude credentials\n{claude_pattern}\n")
+    except (OSError, PermissionError) as e:
+        print(f"  Warning: Could not update .gitignore: {e}")
 
 
 def has_project_prompts(project_dir: Path) -> bool:

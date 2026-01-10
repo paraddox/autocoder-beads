@@ -47,6 +47,16 @@ def sanitize_output(line: str) -> str:
     return line
 
 
+def _sync_project_credentials(project_dir: Path, source_dir: Path | None = None) -> bool:
+    """Sync Claude credentials from host to project before container start."""
+    import sys
+    root = Path(__file__).parent.parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from prompts import sync_claude_credentials
+    return sync_claude_credentials(project_dir, source_dir)
+
+
 class ContainerManager:
     """
     Manages a Docker container for a single project.
@@ -297,6 +307,9 @@ class ContainerManager:
                 self._user_started = True  # Mark as user-started for auto-restart
                 return await self.send_instruction(instruction)
             return True, "Container already running"
+
+        # Sync credentials before container start
+        _sync_project_credentials(self.project_dir, self.claude_credentials_dir)
 
         try:
             if self._status == "stopped":
@@ -670,6 +683,9 @@ class ContainerManager:
 
         if self._status == "running":
             return True, "Container already running"
+
+        # Sync credentials before container start
+        _sync_project_credentials(self.project_dir, self.claude_credentials_dir)
 
         try:
             if self._status == "stopped" or self._status == "completed":
