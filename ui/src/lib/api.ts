@@ -174,6 +174,12 @@ export async function stopAgent(projectName: string): Promise<AgentActionRespons
   })
 }
 
+export async function startContainerOnly(projectName: string): Promise<AgentActionResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/container/start`, {
+    method: 'POST',
+  })
+}
+
 
 // ============================================================================
 // Spec Creation API

@@ -571,6 +571,60 @@ class ContainerManager:
         finally:
             self._restarting = False
 
+    async def start_container_only(self) -> tuple[bool, str]:
+        """
+        Start the container without starting the agent.
+
+        This is used for editing tasks when the agent isn't needed.
+        The container will stay running until idle timeout.
+
+        Returns:
+            Tuple of (success, message)
+        """
+        self._sync_status()
+
+        if self._status == "running":
+            return True, "Container already running"
+
+        try:
+            if self._status == "stopped" or self._status == "completed":
+                # Restart existing container
+                result = subprocess.run(
+                    ["docker", "start", self.container_name],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    return False, f"Failed to start container: {result.stderr}"
+            else:
+                # Create new container
+                cmd = [
+                    "docker", "run", "-d",
+                    "--name", self.container_name,
+                    "-v", f"{self.project_dir}:/project",
+                    "-v", f"{self.claude_credentials_dir}:/tmp/claude-creds:ro",
+                    "-e", "ANTHROPIC_API_KEY",
+                    CONTAINER_IMAGE,
+                ]
+
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    return False, f"Failed to create container: {result.stderr}"
+
+            self.started_at = datetime.now()
+            self._update_activity()
+            self.status = "running"
+            # Don't set _user_started - this is just for editing, not agent work
+
+            # Start log streaming
+            self._log_task = asyncio.create_task(self._stream_logs())
+
+            return True, f"Container {self.container_name} started (idle mode)"
+
+        except Exception as e:
+            logger.exception("Failed to start container")
+            return False, f"Failed to start container: {e}"
+
     def get_status_dict(self) -> dict:
         """Get current status as a dictionary."""
         self._sync_status()

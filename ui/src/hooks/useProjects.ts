@@ -152,6 +152,17 @@ export function useStopAgent(projectName: string) {
   })
 }
 
+export function useStartContainerOnly(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.startContainerOnly(projectName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
+    },
+  })
+}
+
 
 // ============================================================================
 // Setup

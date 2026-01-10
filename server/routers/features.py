@@ -3,7 +3,7 @@ Features Router
 ===============
 
 API endpoints for feature/test case management using beads.
-Routes through container via docker exec. Uses cache when container not running.
+Routes through container via docker exec. Auto-starts container for edits.
 """
 
 import logging
@@ -56,6 +56,42 @@ def _is_container_running(project_name: str) -> bool:
     with _managers_lock:
         manager = _managers.get(project_name)
         return manager is not None and manager.status == "running"
+
+
+async def _ensure_container_running(project_name: str, project_dir: Path) -> None:
+    """
+    Ensure the container is running for write operations.
+
+    Auto-starts the container if it's stopped (without starting the agent).
+    Raises HTTPException if container can't be started.
+    """
+    from ..services.container_manager import get_container_manager, check_docker_available, check_image_exists
+
+    if _is_container_running(project_name):
+        return  # Already running
+
+    # Check Docker availability
+    if not check_docker_available():
+        raise HTTPException(
+            status_code=503,
+            detail="Docker is not available. Please ensure Docker is installed and running."
+        )
+
+    if not check_image_exists():
+        raise HTTPException(
+            status_code=503,
+            detail="Container image 'autocoder-project' not found. Run: docker build -f Dockerfile.project -t autocoder-project ."
+        )
+
+    # Get manager and start container
+    manager = get_container_manager(project_name, project_dir)
+    success, message = await manager.start_container_only()
+
+    if not success:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to start container: {message}"
+        )
 
 
 def feature_to_response(feature: dict) -> FeatureResponse:
@@ -118,7 +154,7 @@ async def list_features(project_name: str):
 
 @router.post("", response_model=FeatureResponse)
 async def create_feature(project_name: str, feature: FeatureCreate):
-    """Create a new feature/test case manually. Requires container to be running."""
+    """Create a new feature/test case manually. Auto-starts container if needed."""
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
 
@@ -128,12 +164,8 @@ async def create_feature(project_name: str, feature: FeatureCreate):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    # Require container to be running for write operations
-    if not _is_container_running(project_name):
-        raise HTTPException(
-            status_code=503,
-            detail="Container not running. Start the agent to create features."
-        )
+    # Ensure container is running (auto-start if needed)
+    await _ensure_container_running(project_name, project_dir)
 
     # Determine priority
     priority = feature.priority if feature.priority is not None else 999
@@ -199,7 +231,7 @@ async def get_feature(project_name: str, feature_id: str):
 
 @router.delete("/{feature_id}")
 async def delete_feature(project_name: str, feature_id: str):
-    """Delete a feature. Requires container to be running."""
+    """Delete a feature. Auto-starts container if needed."""
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
 
@@ -209,12 +241,8 @@ async def delete_feature(project_name: str, feature_id: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    # Require container to be running for write operations
-    if not _is_container_running(project_name):
-        raise HTTPException(
-            status_code=503,
-            detail="Container not running. Start the agent to delete features."
-        )
+    # Ensure container is running (auto-start if needed)
+    await _ensure_container_running(project_name, project_dir)
 
     try:
         container_client = ContainerBeadsClient(project_name)
@@ -241,7 +269,7 @@ async def delete_feature(project_name: str, feature_id: str):
 async def skip_feature(project_name: str, feature_id: str):
     """
     Mark a feature as skipped by moving it to the end of the priority queue.
-    Requires container to be running.
+    Auto-starts container if needed.
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -252,12 +280,8 @@ async def skip_feature(project_name: str, feature_id: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    # Require container to be running for write operations
-    if not _is_container_running(project_name):
-        raise HTTPException(
-            status_code=503,
-            detail="Container not running. Start the agent to skip features."
-        )
+    # Ensure container is running (auto-start if needed)
+    await _ensure_container_running(project_name, project_dir)
 
     try:
         container_client = ContainerBeadsClient(project_name)
@@ -280,7 +304,7 @@ async def skip_feature(project_name: str, feature_id: str):
 @router.patch("/{feature_id}", response_model=FeatureResponse)
 async def update_feature(project_name: str, feature_id: str, update: FeatureUpdate):
     """
-    Update a feature's fields. Requires container to be running.
+    Update a feature's fields. Auto-starts container if needed.
 
     Only the provided fields will be updated; others remain unchanged.
     """
@@ -293,12 +317,8 @@ async def update_feature(project_name: str, feature_id: str, update: FeatureUpda
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    # Require container to be running for write operations
-    if not _is_container_running(project_name):
-        raise HTTPException(
-            status_code=503,
-            detail="Container not running. Start the agent to update features."
-        )
+    # Ensure container is running (auto-start if needed)
+    await _ensure_container_running(project_name, project_dir)
 
     try:
         container_client = ContainerBeadsClient(project_name)
@@ -333,7 +353,7 @@ async def update_feature(project_name: str, feature_id: str, update: FeatureUpda
 async def reopen_feature(project_name: str, feature_id: str):
     """
     Reopen a completed feature (move it back to pending).
-    Requires container to be running.
+    Auto-starts container if needed.
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -344,12 +364,8 @@ async def reopen_feature(project_name: str, feature_id: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    # Require container to be running for write operations
-    if not _is_container_running(project_name):
-        raise HTTPException(
-            status_code=503,
-            detail="Container not running. Start the agent to reopen features."
-        )
+    # Ensure container is running (auto-start if needed)
+    await _ensure_container_running(project_name, project_dir)
 
     try:
         container_client = ContainerBeadsClient(project_name)

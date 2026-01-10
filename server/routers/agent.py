@@ -206,6 +206,38 @@ async def remove_container(project_name: str):
     )
 
 
+@router.post("/container/start", response_model=AgentActionResponse)
+async def start_container_only(project_name: str):
+    """
+    Start the container without starting the agent.
+
+    This is useful for editing tasks when you don't want to start
+    the agent consuming API credits. The container will stay running
+    until idle timeout (60 min).
+    """
+    # Check Docker availability
+    if not check_docker_available():
+        raise HTTPException(
+            status_code=503,
+            detail="Docker is not available. Please ensure Docker is installed and running."
+        )
+
+    if not check_image_exists():
+        raise HTTPException(
+            status_code=503,
+            detail="Container image 'autocoder-project' not found. Run: docker build -f Dockerfile.project -t autocoder-project ."
+        )
+
+    manager = get_project_container(project_name)
+    success, message = await manager.start_container_only()
+
+    return AgentActionResponse(
+        success=success,
+        status=manager.status,
+        message=message,
+    )
+
+
 # Legacy endpoints for backwards compatibility
 @router.post("/pause", response_model=AgentActionResponse)
 async def pause_agent(project_name: str):
