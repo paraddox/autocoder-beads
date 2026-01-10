@@ -66,7 +66,7 @@ docker build -f Dockerfile.project -t autocoder-project .
 **Container lifecycle:**
 - `not_created` → `running` → `stopped` (60 min idle timeout) → `completed`
 - Stopped containers persist and restart quickly
-- Progress visible in all states (reads from `.beads/` on host)
+- Progress visible via cached data (polled from container every 30s)
 - `completed` status when all features are done
 
 **Fresh context per task:**
@@ -106,17 +106,25 @@ The registry uses:
 The FastAPI server provides REST endpoints for the UI:
 
 - `server/routers/projects.py` - Project CRUD with registry integration
-- `server/routers/features.py` - Feature management via BeadsClient
+- `server/routers/features.py` - Feature management via container docker exec
 - `server/routers/agent.py` - Container control (start/stop/remove)
 - `server/routers/filesystem.py` - Filesystem browser API with security controls
 - `server/routers/spec_creation.py` - WebSocket for interactive spec creation
 - `server/services/container_manager.py` - Per-project Docker container lifecycle
+- `server/services/container_beads.py` - Send beads commands to containers via docker exec
+- `server/services/feature_poller.py` - Background polling service for feature status (30s interval)
 
 ### Feature Management
 
-Features are tracked using **beads** (git-backed issue tracking). Each project has its own `.beads/` directory. Claude Code uses the `bd` CLI directly via instructions in the project's `CLAUDE.md`:
+Features are tracked using **beads** (git-backed issue tracking). Each project has its own `.beads/` directory.
 
-- `api/beads_client.py` - Python wrapper for the `bd` CLI (used by server for progress display)
+**Container-based architecture:**
+- All beads operations route through `docker exec` to container scripts
+- `container_scripts/beads_commands.py` - Handles CRUD operations inside container
+- `container_scripts/feature_status.py` - Returns feature status as JSON
+- Feature data cached in SQLite (`FeatureCache`, `FeatureStatsCache` models)
+- Background poller updates cache every 30 seconds when container running
+- Write operations (create, update, delete, reopen) require container to be running
 
 **Feature data model (beads issues):**
 - `id` - String ID (e.g., "beads-1", "beads-2")

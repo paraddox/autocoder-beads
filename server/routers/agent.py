@@ -25,8 +25,8 @@ if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
 from registry import get_project_path
-from progress import has_features
-from prompts import get_initializer_prompt, get_coding_prompt, get_coding_prompt_yolo
+from progress import has_features, has_open_features
+from prompts import get_initializer_prompt, get_coding_prompt, get_coding_prompt_yolo, get_overseer_prompt
 
 
 def _get_project_path(project_name: str) -> Path:
@@ -78,24 +78,29 @@ async def get_agent_status(project_name: str):
         container_name=status_dict["container_name"],
         started_at=manager.started_at,
         idle_seconds=status_dict["idle_seconds"],
+        agent_running=status_dict.get("agent_running", False),
     )
 
 
-def _get_agent_prompt(project_dir: Path, yolo_mode: bool = False) -> str:
+def _get_agent_prompt(project_dir: Path, project_name: str, yolo_mode: bool = False) -> str:
     """
     Determine the appropriate prompt based on project state.
 
     - If no features exist: use initializer prompt
-    - If features exist: use coding prompt (or yolo variant)
+    - If open features exist: use coding prompt (or yolo variant)
+    - If all features closed: use overseer prompt (verification)
     """
-    if has_features(project_dir):
-        # Features exist, continue coding
+    if not has_features(project_dir, project_name):
+        # No features yet - run initializer
+        return get_initializer_prompt(project_dir)
+    elif has_open_features(project_dir, project_name):
+        # Open features exist - run coding agent
         if yolo_mode:
             return get_coding_prompt_yolo(project_dir)
         return get_coding_prompt(project_dir)
     else:
-        # No features, initialize from spec
-        return get_initializer_prompt(project_dir)
+        # Features exist but all closed - run overseer for verification
+        return get_overseer_prompt(project_dir)
 
 
 @router.post("/start", response_model=AgentActionResponse)
@@ -132,9 +137,15 @@ async def start_agent(
     if not instruction:
         # Auto-determine based on project state
         try:
-            instruction = _get_agent_prompt(project_dir, request.yolo_mode)
-            is_init = not has_features(project_dir)
-            print(f"[Agent] Auto-selected {'initializer' if is_init else 'coding'} prompt for {project_name}")
+            instruction = _get_agent_prompt(project_dir, project_name, request.yolo_mode)
+            # Determine which prompt was selected for logging
+            if not has_features(project_dir, project_name):
+                prompt_type = "initializer"
+            elif has_open_features(project_dir, project_name):
+                prompt_type = "coding"
+            else:
+                prompt_type = "overseer"
+            print(f"[Agent] Auto-selected {prompt_type} prompt for {project_name}")
         except FileNotFoundError as e:
             raise HTTPException(
                 status_code=400,
@@ -198,6 +209,38 @@ async def remove_container(project_name: str):
     """Remove the container completely (for cleanup)."""
     manager = get_project_container(project_name)
     success, message = await manager.remove()
+
+    return AgentActionResponse(
+        success=success,
+        status=manager.status,
+        message=message,
+    )
+
+
+@router.post("/container/start", response_model=AgentActionResponse)
+async def start_container_only(project_name: str):
+    """
+    Start the container without starting the agent.
+
+    This is useful for editing tasks when you don't want to start
+    the agent consuming API credits. The container will stay running
+    until idle timeout (60 min).
+    """
+    # Check Docker availability
+    if not check_docker_available():
+        raise HTTPException(
+            status_code=503,
+            detail="Docker is not available. Please ensure Docker is installed and running."
+        )
+
+    if not check_image_exists():
+        raise HTTPException(
+            status_code=503,
+            detail="Container image 'autocoder-project' not found. Run: docker build -f Dockerfile.project -t autocoder-project ."
+        )
+
+    manager = get_project_container(project_name)
+    success, message = await manager.start_container_only()
 
     return AgentActionResponse(
         success=success,

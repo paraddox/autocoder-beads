@@ -107,7 +107,10 @@ def validate_project_name(name: str) -> bool:
 
 
 async def poll_progress(websocket: WebSocket, project_name: str, project_dir: Path):
-    """Poll database for progress changes and send updates."""
+    """Poll database for progress changes and send updates.
+
+    Uses cached data when container is running to avoid permission issues.
+    """
     count_passing_tests = _get_count_passing_tests()
     last_passing = -1
     last_in_progress = -1
@@ -115,7 +118,8 @@ async def poll_progress(websocket: WebSocket, project_name: str, project_dir: Pa
 
     while True:
         try:
-            passing, in_progress, total = count_passing_tests(project_dir)
+            # Pass project_name to enable cache lookup when container is running
+            passing, in_progress, total = count_passing_tests(project_dir, project_name)
 
             # Only send if changed
             if passing != last_passing or in_progress != last_in_progress or total != last_total:
@@ -202,9 +206,9 @@ async def project_websocket(websocket: WebSocket, project_name: str):
             "status": container_manager.status,
         })
 
-        # Send initial progress
+        # Send initial progress (pass project_name for cache lookup)
         count_passing_tests = _get_count_passing_tests()
-        passing, in_progress, total = count_passing_tests(project_dir)
+        passing, in_progress, total = count_passing_tests(project_dir, project_name)
         percentage = (passing / total * 100) if total > 0 else 0
         await websocket.send_json({
             "type": "progress",

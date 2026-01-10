@@ -2,9 +2,5 @@
 API Package
 ============
 
-Beads client for feature management using git-backed issue tracking.
+Legacy package - beads operations now routed through ContainerBeadsClient.
 """
-
-from api.beads_client import BeadsClient, FeatureDict
-
-__all__ = ["BeadsClient", "FeatureDict"]

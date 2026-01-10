@@ -34,5 +34,43 @@ source venv/bin/activate
 echo "Installing dependencies..."
 pip install -r requirements.txt --quiet
 
-# Run the Python launcher
-python start_ui.py "$@"
+PID_FILE="/tmp/autocoder-ui.pid"
+
+# Check for --stop flag
+if [[ " $* " == *" --stop "* ]] || [[ " $* " == *" -s "* ]]; then
+    echo "Stopping AutoCoder UI..."
+    # Kill by PID file if exists
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if kill -0 "$PID" 2>/dev/null; then
+            kill "$PID" 2>/dev/null
+            echo "Stopped process $PID"
+        fi
+        rm -f "$PID_FILE"
+    fi
+    # Also kill any uvicorn processes on port 8000
+    pkill -f "uvicorn server.main:app" 2>/dev/null && echo "Stopped uvicorn processes"
+    exit 0
+fi
+
+# Check for -bg flag to run in background
+if [[ " $* " == *" -bg "* ]] || [[ " $* " == *" --background "* ]]; then
+    # Remove -bg/--background from args before passing to start_ui.py
+    ARGS=$(echo "$@" | sed 's/-bg//g' | sed 's/--background//g')
+    echo "Starting server in background..."
+    nohup python start_ui.py $ARGS > /tmp/autocoder-ui.log 2>&1 &
+    BG_PID=$!
+    echo "$BG_PID" > "$PID_FILE"
+    sleep 2  # Wait for uvicorn to start
+    # Find the actual uvicorn PID
+    UVICORN_PID=$(pgrep -f "uvicorn server.main:app" | head -1)
+    echo "Shell PID: $BG_PID"
+    echo "Uvicorn PID: $UVICORN_PID"
+    echo "Log file: /tmp/autocoder-ui.log"
+    echo ""
+    echo "UI available at: http://localhost:8000"
+    echo "To stop: ./start_ui.sh --stop"
+else
+    # Run in foreground
+    python start_ui.py "$@"
+fi

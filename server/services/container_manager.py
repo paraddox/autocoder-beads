@@ -9,8 +9,10 @@ Each project gets its own sandboxed container.
 import asyncio
 import json
 import logging
+import os
 import re
 import subprocess
+import tempfile
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -43,6 +45,16 @@ def sanitize_output(line: str) -> str:
     for pattern in SENSITIVE_PATTERNS:
         line = re.sub(pattern, '[REDACTED]', line, flags=re.IGNORECASE)
     return line
+
+
+def _sync_project_credentials(project_dir: Path, source_dir: Path | None = None) -> bool:
+    """Sync Claude credentials from host to project before container start."""
+    import sys
+    root = Path(__file__).parent.parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from prompts import sync_claude_credentials
+    return sync_claude_credentials(project_dir, source_dir)
 
 
 class ContainerManager:
@@ -84,6 +96,8 @@ class ContainerManager:
         self._user_started: bool = False
         # Flag to prevent health monitor conflicts during restart
         self._restarting: bool = False
+        # Track if the last agent was overseer (for completion detection)
+        self._last_agent_was_overseer: bool = False
 
         # Callbacks for WebSocket notifications
         self._output_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
@@ -95,6 +109,10 @@ class ContainerManager:
 
     def _sync_status(self) -> None:
         """Sync status with actual Docker container state."""
+        # Preserve "completed" status - don't overwrite it
+        if self._status == "completed":
+            return
+
         try:
             result = subprocess.run(
                 ["docker", "inspect", "-f", "{{.State.Status}}", self.container_name],
@@ -181,12 +199,13 @@ class ContainerManager:
         return int((datetime.now() - self.last_activity).total_seconds())
 
     def is_agent_running(self) -> bool:
-        """Check if the claude process is running inside the container."""
+        """Check if the agent process is running inside the container."""
         if self._status != "running":
             return False
         try:
+            # Check for Python agent_app.py process
             result = subprocess.run(
-                ["docker", "exec", self.container_name, "pgrep", "-x", "claude"],
+                ["docker", "exec", self.container_name, "pgrep", "-f", "python.*agent_app"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -202,7 +221,20 @@ class ContainerManager:
         return self._user_started
 
     def has_open_features(self) -> bool:
-        """Check if project has open features remaining."""
+        """Check if project has open features remaining using cached stats."""
+        from .feature_poller import get_cached_stats
+
+        try:
+            stats = get_cached_stats(self.project_name)
+            open_count = stats.get("pending", 0) + stats.get("in_progress", 0)
+            return open_count > 0
+        except Exception as e:
+            logger.warning(f"Failed to check open features from cache: {e}")
+            # Fallback to direct file read (may fail due to permissions)
+            return self._has_open_features_direct()
+
+    def _has_open_features_direct(self) -> bool:
+        """Fallback: Check open features by reading JSONL directly (may fail due to permissions)."""
         issues_file = self.project_dir / ".beads" / "issues.jsonl"
         if not issues_file.exists():
             return False
@@ -218,7 +250,7 @@ class ContainerManager:
                         continue
             return open_count > 0
         except Exception as e:
-            logger.warning(f"Failed to check open features: {e}")
+            logger.warning(f"Failed to read issues file directly: {e}")
             return False
 
     async def _broadcast_output(self, line: str) -> None:
@@ -272,8 +304,12 @@ class ContainerManager:
         if self._status == "running":
             # Container already running, just send instruction if provided
             if instruction:
+                self._user_started = True  # Mark as user-started for auto-restart
                 return await self.send_instruction(instruction)
             return True, "Container already running"
+
+        # Sync credentials before container start
+        _sync_project_credentials(self.project_dir, self.claude_credentials_dir)
 
         try:
             if self._status == "stopped":
@@ -311,20 +347,20 @@ class ContainerManager:
 
             # Send instruction if provided
             if instruction:
-                # Wait for claude to be available (entrypoint runs npm update)
+                # Wait for Python and agent app to be available
                 for attempt in range(10):
                     await asyncio.sleep(2)
                     check = subprocess.run(
                         ["docker", "exec", "-u", "coder", self.container_name,
-                         "which", "claude"],
+                         "python", "-c", "import claude_code_sdk; print('ok')"],
                         capture_output=True,
                         text=True,
                     )
                     if check.returncode == 0:
                         break
-                    logger.info(f"Waiting for claude to be ready (attempt {attempt + 1}/10)")
+                    logger.info(f"Waiting for agent SDK to be ready (attempt {attempt + 1}/10)")
                 else:
-                    return False, "Claude Code not available in container after 20 seconds"
+                    return False, "Agent SDK not available in container after 20 seconds"
 
                 return await self.send_instruction(instruction)
 
@@ -382,7 +418,9 @@ class ContainerManager:
 
     async def send_instruction(self, instruction: str) -> tuple[bool, str]:
         """
-        Send an instruction to Claude Code running in the container.
+        Send an instruction to the Agent SDK app running in the container.
+
+        Uses stdin to pass the prompt to agent_app.py, avoiding shell escaping issues.
 
         Args:
             instruction: The instruction/prompt to send
@@ -398,48 +436,127 @@ class ContainerManager:
         try:
             self._update_activity()
 
-            # Use docker exec to run claude with the instruction
-            # Run as 'coder' user (non-root) to allow --dangerously-skip-permissions
-            # --dangerously-skip-permissions allows autonomous operation in sandbox
-            # --print outputs response without interactive mode
-            process = await asyncio.create_subprocess_exec(
-                "docker", "exec", "-u", "coder", self.container_name,
-                "claude", "--print", "--dangerously-skip-permissions", instruction,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
+            # Write prompt to a temp file, then pipe to container via stdin
+            # This avoids shell escaping issues with large prompts
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".txt", delete=False, encoding="utf-8"
+            ) as f:
+                f.write(instruction)
+                prompt_file = f.name
 
-            # Stream output to callbacks
-            while True:
-                if process.stdout is None:
-                    break
-                line = await process.stdout.readline()
-                if not line:
-                    break
-                decoded = line.decode("utf-8", errors="replace").rstrip()
-                sanitized = sanitize_output(decoded)
-                self._update_activity()
-                await self._broadcast_output(sanitized)
+            try:
+                # Use docker exec with stdin to run the Python agent app
+                # Run as 'coder' user (non-root) for proper permissions
+                # Note: Using create_subprocess_exec (not shell) for security
+                with open(prompt_file, "r", encoding="utf-8") as stdin_file:
+                    process = await asyncio.create_subprocess_exec(
+                        "docker", "exec", "-i", "-u", "coder", self.container_name,
+                        "python", "/app/agent_app.py",
+                        stdin=stdin_file,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT,
+                    )
 
-            await process.wait()
+                    # Stream output to callbacks
+                    while True:
+                        if process.stdout is None:
+                            break
+                        line = await process.stdout.readline()
+                        if not line:
+                            break
+                        decoded = line.decode("utf-8", errors="replace").rstrip()
+                        sanitized = sanitize_output(decoded)
+                        self._update_activity()
+                        await self._broadcast_output(sanitized)
 
-            # Auto-restart logic for fresh context per task
-            if self._user_started and self.has_open_features():
-                logger.info(f"Task complete in {self.container_name}, restarting for next feature...")
-                await self._broadcast_output("[System] Session complete. Starting fresh context for next task...")
-                return await self.restart_agent()
-            elif self._user_started and not self.has_open_features():
-                logger.info(f"All features complete in {self.container_name}!")
-                await self._broadcast_output("[System] All features complete!")
-                await self.stop()
-                self.status = "completed"
-                return True, "All features complete"
+                    await process.wait()
+                    exit_code = process.returncode or 0
 
-            return True, "Instruction sent"
+            finally:
+                # Clean up temp file
+                os.unlink(prompt_file)
+
+            # Handle exit code with enhanced error recovery
+            return await self._handle_agent_exit(exit_code)
 
         except Exception as e:
             logger.exception("Failed to send instruction")
             return False, f"Failed to send instruction: {e}"
+
+    async def _handle_agent_exit(self, exit_code: int) -> tuple[bool, str]:
+        """
+        Handle agent exit with recovery logic.
+
+        Exit codes:
+        - 0: Success
+        - 1: Failure (all retries exhausted)
+        - 130: User interrupt (Ctrl+C)
+
+        Agent flow:
+        - If open features exist → restart coding agent
+        - If no open features:
+          - If last agent was NOT overseer → restart with overseer
+          - If last agent WAS overseer → project is truly complete
+
+        Args:
+            exit_code: The exit code from the agent process
+
+        Returns:
+            Tuple of (success, message)
+        """
+        if exit_code == 0:
+            # Success - determine next action
+            if self._user_started and self.has_open_features():
+                # Features remain - restart coding agent
+                logger.info(f"Features remain in {self.container_name}, restarting coding agent...")
+                await self._broadcast_output("[System] Session complete. Starting fresh context for next task...")
+                self._last_agent_was_overseer = False
+                return await self.restart_agent()
+            elif self._user_started and not self.has_open_features():
+                # All features closed - check if overseer already verified
+                if self._last_agent_was_overseer:
+                    # Overseer found nothing - project is truly complete
+                    logger.info(f"Verification complete in {self.container_name}! All features verified.")
+                    await self._broadcast_output("[System] Verification complete! All features verified.")
+                    await self.stop()
+                    self.status = "completed"
+                    return True, "All features verified complete"
+                else:
+                    # Run overseer to verify implementations
+                    logger.info(f"All features closed in {self.container_name}, running overseer verification...")
+                    await self._broadcast_output("[System] All features complete. Running verification...")
+                    return await self.restart_with_overseer()
+            return True, "Instruction completed"
+
+        elif exit_code == 130:
+            # User interrupt - don't auto-restart
+            logger.info(f"Agent interrupted in {self.container_name}")
+            await self._broadcast_output("[System] Agent interrupted by user")
+            return True, "Agent interrupted"
+
+        else:
+            # Error - check state file for details and potentially restart
+            state_file = self.project_dir / ".agent_state.json"
+            error_info = "unknown error"
+
+            if state_file.exists():
+                try:
+                    state = json.loads(state_file.read_text())
+                    error_info = state.get("error", "unknown error")
+                    error_type = state.get("error_type", "Exception")
+                    logger.error(f"Agent failed in {self.container_name}: {error_type}: {error_info}")
+                    await self._broadcast_output(f"[System] Agent error: {error_type}: {error_info}")
+                except Exception as e:
+                    logger.warning(f"Failed to read agent state: {e}")
+
+            # Auto-restart if user started and features remain
+            if self._user_started and self.has_open_features():
+                await self._broadcast_output("[System] Auto-restarting after error...")
+                await asyncio.sleep(5)  # Brief delay before restart
+                self._last_agent_was_overseer = False
+                return await self.restart_agent()
+            else:
+                return False, f"Agent failed: {error_info}"
 
     async def remove(self) -> tuple[bool, str]:
         """
@@ -499,10 +616,115 @@ class ContainerManager:
             except Exception as e:
                 return False, f"Failed to read coding prompt: {e}"
 
+            # Mark that we're running coding agent (not overseer)
+            self._last_agent_was_overseer = False
+
             # Start container with instruction
             return await self.start(instruction)
         finally:
             self._restarting = False
+
+    async def restart_with_overseer(self) -> tuple[bool, str]:
+        """
+        Restart the agent with the overseer prompt.
+
+        This is called when all features are closed to verify implementations.
+        The overseer checks for incomplete/placeholder code and creates/reopens issues.
+
+        Returns:
+            Tuple of (success, message)
+        """
+        logger.info(f"Starting overseer verification in container {self.container_name}")
+
+        self._restarting = True
+        try:
+            # Stop the container
+            await self.stop()
+
+            # Read the overseer prompt from the project
+            overseer_prompt_path = self.project_dir / "prompts" / "overseer_prompt.md"
+            if not overseer_prompt_path.exists():
+                # Fall back to template if project-specific doesn't exist
+                import sys
+                from pathlib import Path
+                root = Path(__file__).parent.parent.parent
+                if str(root) not in sys.path:
+                    sys.path.insert(0, str(root))
+                from prompts import get_overseer_prompt
+                try:
+                    instruction = get_overseer_prompt(self.project_dir)
+                except FileNotFoundError:
+                    return False, "No overseer_prompt.md found in project or templates"
+            else:
+                try:
+                    instruction = overseer_prompt_path.read_text()
+                except Exception as e:
+                    return False, f"Failed to read overseer prompt: {e}"
+
+            # Mark that we're running overseer
+            self._last_agent_was_overseer = True
+
+            # Start container with instruction
+            return await self.start(instruction)
+        finally:
+            self._restarting = False
+
+    async def start_container_only(self) -> tuple[bool, str]:
+        """
+        Start the container without starting the agent.
+
+        This is used for editing tasks when the agent isn't needed.
+        The container will stay running until idle timeout.
+
+        Returns:
+            Tuple of (success, message)
+        """
+        self._sync_status()
+
+        if self._status == "running":
+            return True, "Container already running"
+
+        # Sync credentials before container start
+        _sync_project_credentials(self.project_dir, self.claude_credentials_dir)
+
+        try:
+            if self._status == "stopped" or self._status == "completed":
+                # Restart existing container
+                result = subprocess.run(
+                    ["docker", "start", self.container_name],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    return False, f"Failed to start container: {result.stderr}"
+            else:
+                # Create new container
+                cmd = [
+                    "docker", "run", "-d",
+                    "--name", self.container_name,
+                    "-v", f"{self.project_dir}:/project",
+                    "-v", f"{self.claude_credentials_dir}:/tmp/claude-creds:ro",
+                    "-e", "ANTHROPIC_API_KEY",
+                    CONTAINER_IMAGE,
+                ]
+
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    return False, f"Failed to create container: {result.stderr}"
+
+            self.started_at = datetime.now()
+            self._update_activity()
+            self.status = "running"
+            # Don't set _user_started - this is just for editing, not agent work
+
+            # Start log streaming
+            self._log_task = asyncio.create_task(self._stream_logs())
+
+            return True, f"Container {self.container_name} started (idle mode)"
+
+        except Exception as e:
+            logger.exception("Failed to start container")
+            return False, f"Failed to start container: {e}"
 
     def get_status_dict(self) -> dict:
         """Get current status as a dictionary."""

@@ -94,6 +94,15 @@ class FeatureCreate(FeatureBase):
     priority: int | None = None
 
 
+class FeatureUpdate(BaseModel):
+    """Request schema for updating a feature."""
+    name: str | None = None
+    description: str | None = None
+    category: str | None = None
+    priority: int | None = None
+    steps: list[str] | None = None
+
+
 class FeatureResponse(FeatureBase):
     """Response schema for a feature."""
     id: str  # beads uses string IDs like "feat-1"
@@ -124,10 +133,11 @@ class AgentStartRequest(BaseModel):
 
 class AgentStatus(BaseModel):
     """Current agent/container status."""
-    status: Literal["not_created", "stopped", "running", "paused", "crashed"]
+    status: Literal["not_created", "stopped", "running", "paused", "crashed", "completed"]
     container_name: str | None = None
     started_at: datetime | None = None
     idle_seconds: int = 0
+    agent_running: bool = False  # True if agent process is running inside container
     # Legacy fields for backwards compatibility
     pid: int | None = None
     yolo_mode: bool = False
@@ -188,15 +198,24 @@ class WSAgentStatusMessage(BaseModel):
 # Spec Chat Schemas
 # ============================================================================
 
-# Maximum image file size: 5 MB
-MAX_IMAGE_SIZE = 5 * 1024 * 1024
+# Maximum file sizes
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB for images
+MAX_TEXT_SIZE = 1 * 1024 * 1024   # 1 MB for text files
+
+# Supported MIME types
+IMAGE_MIME_TYPES = Literal['image/jpeg', 'image/png']
+TEXT_MIME_TYPES = Literal[
+    'text/plain', 'text/markdown', 'text/csv', 'application/json',
+    'text/html', 'text/css', 'text/javascript', 'application/xml'
+]
 
 
 class ImageAttachment(BaseModel):
     """Image attachment from client for spec creation chat."""
     filename: str = Field(..., min_length=1, max_length=255)
-    mimeType: Literal['image/jpeg', 'image/png']
+    mimeType: IMAGE_MIME_TYPES
     base64Data: str
+    isText: Literal[False] = False
 
     @field_validator('base64Data')
     @classmethod
@@ -214,6 +233,30 @@ class ImageAttachment(BaseModel):
             if 'Image size' in str(e):
                 raise
             raise ValueError(f'Invalid base64 data: {e}')
+
+
+class TextAttachment(BaseModel):
+    """Text file attachment from client for spec creation chat."""
+    filename: str = Field(..., min_length=1, max_length=255)
+    mimeType: TEXT_MIME_TYPES
+    textContent: str
+    isText: Literal[True] = True
+
+    @field_validator('textContent')
+    @classmethod
+    def validate_text_size(cls, v: str) -> str:
+        """Validate that text content is within size limit."""
+        size = len(v.encode('utf-8'))
+        if size > MAX_TEXT_SIZE:
+            raise ValueError(
+                f'Text file size ({size / (1024 * 1024):.1f} MB) exceeds '
+                f'maximum of {MAX_TEXT_SIZE // (1024 * 1024)} MB'
+            )
+        return v
+
+
+# Union type for any attachment
+FileAttachment = ImageAttachment | TextAttachment
 
 
 # ============================================================================

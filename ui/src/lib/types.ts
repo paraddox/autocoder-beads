@@ -110,6 +110,7 @@ export interface AgentStatusResponse {
   started_at: string | null
   idle_seconds: number
   yolo_mode: boolean
+  agent_running: boolean
 }
 
 export interface AgentActionResponse {
@@ -229,22 +230,41 @@ export type SpecChatServerMessage =
   | SpecChatPongMessage
   | SpecChatResponseDoneMessage
 
+// File attachment types
+export type ImageMimeType = 'image/jpeg' | 'image/png'
+export type TextMimeType = 'text/plain' | 'text/markdown' | 'text/csv' | 'application/json' | 'text/html' | 'text/css' | 'text/javascript' | 'application/xml'
+export type AttachmentMimeType = ImageMimeType | TextMimeType
+
 // Image attachment for chat messages
 export interface ImageAttachment {
   id: string
   filename: string
-  mimeType: 'image/jpeg' | 'image/png'
+  mimeType: ImageMimeType
   base64Data: string    // Raw base64 (without data: prefix)
   previewUrl: string    // data: URL for display
   size: number          // File size in bytes
+  isText?: false        // Type discriminator
 }
+
+// Text file attachment for chat messages
+export interface TextAttachment {
+  id: string
+  filename: string
+  mimeType: TextMimeType
+  textContent: string   // Raw text content
+  size: number          // File size in bytes
+  isText: true          // Type discriminator
+}
+
+// Union type for any attachment
+export type FileAttachment = ImageAttachment | TextAttachment
 
 // UI chat message for display
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
-  attachments?: ImageAttachment[]
+  attachments?: FileAttachment[]
   timestamp: Date
   questions?: SpecQuestion[]
   isStreaming?: boolean

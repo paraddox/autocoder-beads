@@ -11,11 +11,36 @@ import { useSpecChat } from '../hooks/useSpecChat'
 import { ChatMessage } from './ChatMessage'
 import { QuestionOptions } from './QuestionOptions'
 import { TypingIndicator } from './TypingIndicator'
-import type { ImageAttachment } from '../lib/types'
+import type { ImageAttachment, TextAttachment, FileAttachment, ImageMimeType, TextMimeType } from '../lib/types'
 
-// Image upload validation constants
-const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
-const ALLOWED_TYPES = ['image/jpeg', 'image/png']
+// File upload validation constants
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5 MB for images
+const MAX_TEXT_SIZE = 1 * 1024 * 1024  // 1 MB for text files
+
+const IMAGE_TYPES: ImageMimeType[] = ['image/jpeg', 'image/png']
+const TEXT_TYPES: TextMimeType[] = [
+  'text/plain', 'text/markdown', 'text/csv', 'application/json',
+  'text/html', 'text/css', 'text/javascript', 'application/xml'
+]
+
+// File extensions that should be treated as text
+const TEXT_EXTENSIONS = ['.txt', '.md', '.csv', '.json', '.html', '.css', '.js', '.jsx', '.ts', '.tsx', '.xml', '.yaml', '.yml', '.env', '.sh', '.py', '.rb', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.hpp']
+
+function isTextFile(file: File): boolean {
+  // Check by MIME type
+  if (TEXT_TYPES.includes(file.type as TextMimeType)) return true
+  // Check by extension for files with generic MIME types
+  const ext = '.' + file.name.split('.').pop()?.toLowerCase()
+  return TEXT_EXTENSIONS.includes(ext)
+}
+
+function getTextMimeType(file: File): TextMimeType {
+  if (TEXT_TYPES.includes(file.type as TextMimeType)) {
+    return file.type as TextMimeType
+  }
+  // Default to text/plain for unknown text files
+  return 'text/plain'
+}
 
 type InitializerStatus = 'idle' | 'starting' | 'error'
 
@@ -41,7 +66,7 @@ export function SpecCreationChat({
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [yoloEnabled, setYoloEnabled] = useState(false)
-  const [pendingAttachments, setPendingAttachments] = useState<ImageAttachment[]>([])
+  const [pendingAttachments, setPendingAttachments] = useState<FileAttachment[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -111,42 +136,66 @@ export function SpecCreationChat({
     sendAnswer(answers)
   }
 
-  // File handling for image attachments
+  // File handling for image and text attachments
   const handleFileSelect = useCallback((files: FileList | null) => {
     if (!files) return
 
     Array.from(files).forEach((file) => {
-      // Validate file type
-      if (!ALLOWED_TYPES.includes(file.type)) {
-        setError(`Invalid file type: ${file.name}. Only JPEG and PNG are supported.`)
+      const isText = isTextFile(file)
+
+      // Validate file type for images (text files are more permissive via extension)
+      if (!isText && !IMAGE_TYPES.includes(file.type as ImageMimeType)) {
+        setError(`Invalid file type: ${file.name}. Supported: images (JPEG, PNG) and text files (.txt, .md, .json, etc.)`)
         return
       }
 
       // Validate file size
-      if (file.size > MAX_FILE_SIZE) {
-        setError(`File too large: ${file.name}. Maximum size is 5 MB.`)
+      const maxSize = isText ? MAX_TEXT_SIZE : MAX_IMAGE_SIZE
+      const maxSizeMB = maxSize / (1024 * 1024)
+      if (file.size > maxSize) {
+        setError(`File too large: ${file.name}. Maximum size is ${maxSizeMB} MB for ${isText ? 'text files' : 'images'}.`)
         return
       }
 
-      // Read and convert to base64
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string
-        // dataUrl is "data:image/png;base64,XXXXXX"
-        const base64Data = dataUrl.split(',')[1]
+      if (isText) {
+        // Read text file as text
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          const textContent = e.target?.result as string
 
-        const attachment: ImageAttachment = {
-          id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-          filename: file.name,
-          mimeType: file.type as 'image/jpeg' | 'image/png',
-          base64Data,
-          previewUrl: dataUrl,
-          size: file.size,
+          const attachment: TextAttachment = {
+            id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            filename: file.name,
+            mimeType: getTextMimeType(file),
+            textContent,
+            size: file.size,
+            isText: true,
+          }
+
+          setPendingAttachments((prev) => [...prev, attachment])
         }
+        reader.readAsText(file)
+      } else {
+        // Read image file as base64
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          const dataUrl = e.target?.result as string
+          // dataUrl is "data:image/png;base64,XXXXXX"
+          const base64Data = dataUrl.split(',')[1]
 
-        setPendingAttachments((prev) => [...prev, attachment])
+          const attachment: ImageAttachment = {
+            id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            filename: file.name,
+            mimeType: file.type as ImageMimeType,
+            base64Data,
+            previewUrl: dataUrl,
+            size: file.size,
+          }
+
+          setPendingAttachments((prev) => [...prev, attachment])
+        }
+        reader.readAsDataURL(file)
       }
-      reader.readAsDataURL(file)
     })
   }, [])
 
@@ -312,11 +361,20 @@ export function SpecCreationChat({
                   key={attachment.id}
                   className="relative group border border-[var(--color-border)] p-1 bg-[var(--color-bg)] rounded-md shadow-sm"
                 >
-                  <img
-                    src={attachment.previewUrl}
-                    alt={attachment.filename}
-                    className="w-16 h-16 object-cover rounded"
-                  />
+                  {attachment.isText ? (
+                    // Text file preview - show file icon and first few chars
+                    <div className="w-16 h-16 flex flex-col items-center justify-center bg-[var(--color-bg-elevated)] rounded text-[var(--color-text-secondary)]">
+                      <Paperclip size={20} />
+                      <span className="text-[8px] mt-1 uppercase">{attachment.filename.split('.').pop()}</span>
+                    </div>
+                  ) : (
+                    // Image preview
+                    <img
+                      src={(attachment as ImageAttachment).previewUrl}
+                      alt={attachment.filename}
+                      className="w-16 h-16 object-cover rounded"
+                    />
+                  )}
                   <button
                     onClick={() => handleRemoveAttachment(attachment.id)}
                     className="absolute -top-2 -right-2 bg-[var(--color-danger)] text-[var(--color-text-inverse)] rounded-full p-0.5 border border-[var(--color-border)] hover:scale-110 transition-transform"
@@ -339,7 +397,7 @@ export function SpecCreationChat({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png"
+              accept="image/jpeg,image/png,.txt,.md,.csv,.json,.html,.css,.js,.jsx,.ts,.tsx,.xml,.yaml,.yml,.env,.sh,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.hpp"
               multiple
               onChange={(e) => handleFileSelect(e.target.files)}
               className="hidden"
@@ -350,7 +408,7 @@ export function SpecCreationChat({
               onClick={() => fileInputRef.current?.click()}
               disabled={connectionStatus !== 'connected'}
               className="btn btn-ghost p-3"
-              title="Attach image (JPEG, PNG - max 5MB)"
+              title="Attach files (images: JPEG/PNG up to 5MB, text files: .txt/.md/.json/etc up to 1MB)"
             >
               <Paperclip size={18} />
             </button>
@@ -386,7 +444,7 @@ export function SpecCreationChat({
 
           {/* Help text */}
           <p className="text-xs text-[var(--color-text-secondary)] mt-2">
-            Press Enter to send. Drag & drop or click <Paperclip size={12} className="inline" /> to attach images (JPEG/PNG, max 5MB).
+            Press Enter to send. Drag & drop or click <Paperclip size={12} className="inline" /> to attach files (images or text files like .txt, .md, .json).
           </p>
         </div>
       )}

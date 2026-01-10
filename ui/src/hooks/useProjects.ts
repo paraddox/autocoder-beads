@@ -94,6 +94,29 @@ export function useSkipFeature(projectName: string) {
   })
 }
 
+export function useUpdateFeature(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ featureId, data }: { featureId: string; data: Parameters<typeof api.updateFeature>[2] }) =>
+      api.updateFeature(projectName, featureId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+    },
+  })
+}
+
+export function useReopenFeature(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (featureId: string) => api.reopenFeature(projectName, featureId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+    },
+  })
+}
+
 // ============================================================================
 // Agent
 // ============================================================================
@@ -123,6 +146,17 @@ export function useStopAgent(projectName: string) {
 
   return useMutation({
     mutationFn: () => api.stopAgent(projectName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
+    },
+  })
+}
+
+export function useStartContainerOnly(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.startContainerOnly(projectName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
     },

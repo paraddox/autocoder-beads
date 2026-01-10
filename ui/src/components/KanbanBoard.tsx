@@ -1,12 +1,25 @@
+import { useState } from 'react'
 import { KanbanColumn } from './KanbanColumn'
 import type { Feature, FeatureListResponse } from '../lib/types'
 
 interface KanbanBoardProps {
   features: FeatureListResponse | undefined
   onFeatureClick: (feature: Feature) => void
+  agentRunning?: boolean
+  onEditFeature?: (feature: Feature) => void
+  onReopenFeature?: (feature: Feature) => void
 }
 
-export function KanbanBoard({ features, onFeatureClick }: KanbanBoardProps) {
+export function KanbanBoard({
+  features,
+  onFeatureClick,
+  agentRunning = false,
+  onEditFeature,
+  onReopenFeature,
+}: KanbanBoardProps) {
+  const [pendingSearch, setPendingSearch] = useState('')
+  const [doneSearch, setDoneSearch] = useState('')
+
   if (!features) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -32,6 +45,11 @@ export function KanbanBoard({ features, onFeatureClick }: KanbanBoardProps) {
         features={features.pending}
         color="pending"
         onFeatureClick={onFeatureClick}
+        showSearch={features.pending.length > 3}
+        searchQuery={pendingSearch}
+        onSearchChange={setPendingSearch}
+        agentRunning={agentRunning}
+        onEdit={onEditFeature}
       />
       <KanbanColumn
         title="In Progress"
@@ -39,6 +57,7 @@ export function KanbanBoard({ features, onFeatureClick }: KanbanBoardProps) {
         features={features.in_progress}
         color="progress"
         onFeatureClick={onFeatureClick}
+        agentRunning={agentRunning}
       />
       <KanbanColumn
         title="Done"
@@ -46,6 +65,11 @@ export function KanbanBoard({ features, onFeatureClick }: KanbanBoardProps) {
         features={features.done}
         color="done"
         onFeatureClick={onFeatureClick}
+        showSearch={features.done.length > 3}
+        searchQuery={doneSearch}
+        onSearchChange={setDoneSearch}
+        agentRunning={agentRunning}
+        onReopen={onReopenFeature}
       />
     </div>
   )

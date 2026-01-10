@@ -133,6 +133,23 @@ export async function skipFeature(projectName: string, featureId: string): Promi
   })
 }
 
+export async function updateFeature(
+  projectName: string,
+  featureId: string,
+  data: Partial<Pick<Feature, 'name' | 'description' | 'category' | 'priority' | 'steps'>>
+): Promise<Feature> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${encodeURIComponent(featureId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function reopenFeature(projectName: string, featureId: string): Promise<{ success: boolean; message: string }> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${encodeURIComponent(featureId)}/reopen`, {
+    method: 'PATCH',
+  })
+}
+
 // ============================================================================
 // Agent API
 // ============================================================================
@@ -153,6 +170,12 @@ export async function startAgent(
 
 export async function stopAgent(projectName: string): Promise<AgentActionResponse> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/stop`, {
+    method: 'POST',
+  })
+}
+
+export async function startContainerOnly(projectName: string): Promise<AgentActionResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/container/start`, {
     method: 'POST',
   })
 }

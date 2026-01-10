@@ -1,14 +1,14 @@
 # =============================================================================
 # Project Container Dockerfile
 # =============================================================================
-# Minimal container for running Claude Code on a single project.
-# No Python backend, no MCP servers - just Claude Code + beads CLI.
+# Container for running Claude Agent SDK on a single project.
+# Uses Python-based agent_app.py with retry logic and error recovery.
 #
 # Usage:
 #   docker build -f Dockerfile.project -t autocoder-project .
 #   docker run -d --name autocoder-{project} -v /path/to/project:/project autocoder-project
 
-FROM ubuntu:24.04
+FROM python:3.11-slim-bookworm
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -16,7 +16,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Disable beads daemon in containers (avoids stale lock file issues)
 ENV BD_NO_DAEMON=true
 
-# Install essentials
+# Install essentials (including procps for pgrep health checks)
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     nodejs \
     npm \
     sudo \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user (required for Claude Code --dangerously-skip-permissions)
@@ -33,12 +34,20 @@ RUN apt-get update && apt-get install -y \
 RUN useradd --uid 1001 -m coder \
     && echo "coder ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Install Claude Code CLI globally
+# Install Claude Code CLI globally (required by Agent SDK)
 RUN npm install -g @anthropic-ai/claude-code
+
+# Install Claude Agent SDK
+RUN pip install --no-cache-dir claude-code-sdk
 
 # Install beads CLI
 RUN curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash \
     && mv /root/.local/bin/bd /usr/local/bin/bd 2>/dev/null || true
+
+# Copy agent application and container scripts
+COPY agent_app.py /app/agent_app.py
+COPY container_scripts/feature_status.py /app/feature_status.py
+COPY container_scripts/beads_commands.py /app/beads_commands.py
 
 # Configure git for beads operations (for root, during build)
 RUN git config --global user.email "docker@autocoder.local" \
@@ -66,9 +75,10 @@ WORKDIR /project
 # Create entrypoint script to copy credentials at startup
 RUN cat > /entrypoint.sh << 'EOF'
 #!/bin/bash
-# Set permissive umask so files are readable by host user
-# 002 = files 664, dirs 775 (group and world readable)
-umask 002
+# Set fully permissive umask so ALL new files are world readable/writable
+# This ensures both host user and container user can access files
+# 000 = files 666, dirs 777
+umask 000
 
 # Update Claude Code to latest version at startup
 echo "Updating Claude Code to latest version..."
@@ -89,11 +99,10 @@ if [ -f "/project/.beads/daemon.lock" ]; then
     echo "Removed stale beads daemon.lock"
 fi
 
-# Fix .beads directory permissions (allow container to write, host to read)
+# Fix .beads directory permissions at startup (make world-writable)
+# Don't chown - keep host ownership but make accessible to container
 if [ -d "/project/.beads" ]; then
-    # Make all files writable by container user
-    chown -R coder:coder /project/.beads 2>/dev/null || true
-    chmod -R a+rw /project/.beads 2>/dev/null || true
+    chmod -R a+rwX /project/.beads 2>/dev/null || true
 fi
 
 # Keep container running
