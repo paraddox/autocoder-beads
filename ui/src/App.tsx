@@ -302,7 +302,7 @@ function App() {
              features.pending.length === 0 &&
              features.in_progress.length === 0 &&
              features.done.length === 0 &&
-             wsState.agentStatus === 'running' && (
+             agentStatusData?.agent_running && (
               <div className="card p-8 text-center">
                 <Loader2 size={28} className="animate-spin mx-auto mb-4 text-[var(--color-progress)]" />
                 <h3 className="font-display font-medium text-lg mb-2 text-[var(--color-text)]">
