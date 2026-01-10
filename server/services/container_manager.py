@@ -205,7 +205,20 @@ class ContainerManager:
         return self._user_started
 
     def has_open_features(self) -> bool:
-        """Check if project has open features remaining."""
+        """Check if project has open features remaining using cached stats."""
+        from .feature_poller import get_cached_stats
+
+        try:
+            stats = get_cached_stats(self.project_name)
+            open_count = stats.get("pending", 0) + stats.get("in_progress", 0)
+            return open_count > 0
+        except Exception as e:
+            logger.warning(f"Failed to check open features from cache: {e}")
+            # Fallback to direct file read (may fail due to permissions)
+            return self._has_open_features_direct()
+
+    def _has_open_features_direct(self) -> bool:
+        """Fallback: Check open features by reading JSONL directly (may fail due to permissions)."""
         issues_file = self.project_dir / ".beads" / "issues.jsonl"
         if not issues_file.exists():
             return False
@@ -221,7 +234,7 @@ class ContainerManager:
                         continue
             return open_count > 0
         except Exception as e:
-            logger.warning(f"Failed to check open features: {e}")
+            logger.warning(f"Failed to read issues file directly: {e}")
             return False
 
     async def _broadcast_output(self, line: str) -> None:
