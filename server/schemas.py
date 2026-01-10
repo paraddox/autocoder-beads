@@ -137,6 +137,7 @@ class AgentStatus(BaseModel):
     container_name: str | None = None
     started_at: datetime | None = None
     idle_seconds: int = 0
+    agent_running: bool = False  # True if agent process is running inside container
     # Legacy fields for backwards compatibility
     pid: int | None = None
     yolo_mode: bool = False

@@ -110,6 +110,7 @@ export interface AgentStatusResponse {
   started_at: string | null
   idle_seconds: number
   yolo_mode: boolean
+  agent_running: boolean
 }
 
 export interface AgentActionResponse {
