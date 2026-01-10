@@ -3,7 +3,7 @@ Features Router
 ===============
 
 API endpoints for feature/test case management using beads.
-Routes through container when running, falls back to direct BeadsClient when stopped.
+Routes through container via docker exec. Uses cache when container not running.
 """
 
 import logging
@@ -20,19 +20,18 @@ from ..schemas import (
     FeatureUpdate,
 )
 from ..services.container_beads import ContainerBeadsClient
-
-# Add parent to path for imports
-_root = Path(__file__).parent.parent.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
-
-from api.beads_client import BeadsClient
+from ..services.feature_poller import get_cached_features
 
 logger = logging.getLogger(__name__)
 
 
 def _get_project_path(project_name: str) -> Path:
     """Get project path from registry."""
+    # Add parent to path for imports
+    _root = Path(__file__).parent.parent.parent
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
+
     from registry import get_project_path
     return get_project_path(project_name)
 
@@ -59,11 +58,6 @@ def _is_container_running(project_name: str) -> bool:
         return manager is not None and manager.status == "running"
 
 
-def _get_beads_client(project_dir: Path) -> BeadsClient:
-    """Get a BeadsClient for the project (fallback when container not running)."""
-    return BeadsClient(project_dir)
-
-
 def feature_to_response(feature: dict) -> FeatureResponse:
     """Convert a feature dict to a FeatureResponse."""
     return FeatureResponse(
@@ -88,8 +82,7 @@ async def list_features(project_name: str):
     - in_progress: features currently being worked on
     - done: passes=True
 
-    Uses cached data when container is running to avoid permission issues.
-    Falls back to direct BeadsClient when container is stopped.
+    Uses cached data from polling. Updates every 30 seconds when container running.
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -100,70 +93,32 @@ async def list_features(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    # Check if container is running - use cache to avoid permission issues
-    from ..services.feature_poller import get_cached_features
+    # Always read from cache - populated by feature_poller when container running
+    cached_features = get_cached_features(project_name)
 
-    if _is_container_running(project_name):
-        # Read from cache
-        cached_features = get_cached_features(project_name)
-        if cached_features:  # Cache has data
-            pending = []
-            in_progress = []
-            done = []
+    pending = []
+    in_progress = []
+    done = []
 
-            for f in cached_features:
-                feature_response = feature_to_response(f)
-                if f.get("passes"):
-                    done.append(feature_response)
-                elif f.get("in_progress"):
-                    in_progress.append(feature_response)
-                else:
-                    pending.append(feature_response)
+    for f in cached_features:
+        feature_response = feature_to_response(f)
+        if f.get("passes"):
+            done.append(feature_response)
+        elif f.get("in_progress"):
+            in_progress.append(feature_response)
+        else:
+            pending.append(feature_response)
 
-            return FeatureListResponse(
-                pending=pending,
-                in_progress=in_progress,
-                done=done,
-            )
-
-    # Fallback: read directly from BeadsClient
-    client = _get_beads_client(project_dir)
-
-    # If beads is not initialized, return empty lists
-    if not client.is_initialized():
-        return FeatureListResponse(pending=[], in_progress=[], done=[])
-
-    try:
-        all_features = client.list_all()
-
-        pending = []
-        in_progress = []
-        done = []
-
-        for f in all_features:
-            feature_response = feature_to_response(f)
-            if f.get("passes"):
-                done.append(feature_response)
-            elif f.get("in_progress"):
-                in_progress.append(feature_response)
-            else:
-                pending.append(feature_response)
-
-        return FeatureListResponse(
-            pending=pending,
-            in_progress=in_progress,
-            done=done,
-        )
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Error in list_features")
-        raise HTTPException(status_code=500, detail="Error occurred while listing features")
+    return FeatureListResponse(
+        pending=pending,
+        in_progress=in_progress,
+        done=done,
+    )
 
 
 @router.post("", response_model=FeatureResponse)
 async def create_feature(project_name: str, feature: FeatureCreate):
-    """Create a new feature/test case manually."""
+    """Create a new feature/test case manually. Requires container to be running."""
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
 
@@ -173,46 +128,21 @@ async def create_feature(project_name: str, feature: FeatureCreate):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
+    # Require container to be running for write operations
+    if not _is_container_running(project_name):
+        raise HTTPException(
+            status_code=503,
+            detail="Container not running. Start the agent to create features."
+        )
+
     # Determine priority
     priority = feature.priority if feature.priority is not None else 999
 
-    # Use container client if running
-    if _is_container_running(project_name):
-        try:
-            container_client = ContainerBeadsClient(project_name)
-            feature_id = await container_client.create(
-                name=feature.name,
-                category=feature.category,
-                description=feature.description,
-                steps=feature.steps,
-                priority=priority,
-            )
-
-            if not feature_id:
-                raise HTTPException(status_code=500, detail="Failed to create feature")
-
-            # Get the created feature
-            created = await container_client.get_feature(feature_id)
-            if not created:
-                raise HTTPException(status_code=500, detail="Feature created but could not be retrieved")
-
-            return feature_to_response(created)
-        except RuntimeError as e:
-            logger.error(f"Container command failed: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to create feature: {e}")
-
-    # Fallback to direct BeadsClient
-    client = _get_beads_client(project_dir)
-
     try:
-        # Initialize beads if needed
-        if not client.is_initialized():
-            client.init()
-
-        # Create the feature
-        feature_id = client.create(
-            category=feature.category,
+        container_client = ContainerBeadsClient(project_name)
+        feature_id = await container_client.create(
             name=feature.name,
+            category=feature.category,
             description=feature.description,
             steps=feature.steps,
             priority=priority,
@@ -222,16 +152,14 @@ async def create_feature(project_name: str, feature: FeatureCreate):
             raise HTTPException(status_code=500, detail="Failed to create feature")
 
         # Get the created feature
-        created = client.get_feature(feature_id)
+        created = await container_client.get_feature(feature_id)
         if not created:
             raise HTTPException(status_code=500, detail="Feature created but could not be retrieved")
 
         return feature_to_response(created)
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Failed to create feature")
-        raise HTTPException(status_code=500, detail="Failed to create feature")
+    except RuntimeError as e:
+        logger.error(f"Container command failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create feature: {e}")
 
 
 @router.get("/{feature_id}", response_model=FeatureResponse)
@@ -246,7 +174,7 @@ async def get_feature(project_name: str, feature_id: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    # Use container client if running
+    # If container running, get from container for fresh data
     if _is_container_running(project_name):
         try:
             container_client = ContainerBeadsClient(project_name)
@@ -260,29 +188,18 @@ async def get_feature(project_name: str, feature_id: str):
             logger.error(f"Container command failed: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to get feature: {e}")
 
-    # Fallback to direct BeadsClient
-    client = _get_beads_client(project_dir)
+    # Fallback to cache
+    cached_features = get_cached_features(project_name)
+    for f in cached_features:
+        if str(f.get("id", "")) == feature_id:
+            return feature_to_response(f)
 
-    if not client.is_initialized():
-        raise HTTPException(status_code=404, detail="No features found")
-
-    try:
-        feature = client.get_feature(feature_id)
-
-        if not feature:
-            raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
-
-        return feature_to_response(feature)
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Error in get_feature")
-        raise HTTPException(status_code=500, detail="Error occurred")
+    raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
 
 @router.delete("/{feature_id}")
 async def delete_feature(project_name: str, feature_id: str):
-    """Delete a feature."""
+    """Delete a feature. Requires container to be running."""
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
 
@@ -292,60 +209,39 @@ async def delete_feature(project_name: str, feature_id: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    # Use container client if running
-    if _is_container_running(project_name):
-        try:
-            container_client = ContainerBeadsClient(project_name)
-
-            # Check if feature exists first
-            feature = await container_client.get_feature(feature_id)
-            if not feature:
-                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
-
-            success = await container_client.delete(feature_id)
-
-            if not success:
-                raise HTTPException(status_code=500, detail="Failed to delete feature")
-
-            return {"success": True, "message": f"Feature {feature_id} deleted"}
-        except RuntimeError as e:
-            logger.error(f"Container command failed: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to delete feature: {e}")
-        except HTTPException:
-            raise
-
-    # Fallback to direct BeadsClient
-    client = _get_beads_client(project_dir)
-
-    if not client.is_initialized():
-        raise HTTPException(status_code=404, detail="No features found")
+    # Require container to be running for write operations
+    if not _is_container_running(project_name):
+        raise HTTPException(
+            status_code=503,
+            detail="Container not running. Start the agent to delete features."
+        )
 
     try:
+        container_client = ContainerBeadsClient(project_name)
+
         # Check if feature exists first
-        feature = client.get_feature(feature_id)
+        feature = await container_client.get_feature(feature_id)
         if not feature:
             raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
-        success = client.delete(feature_id)
+        success = await container_client.delete(feature_id)
 
         if not success:
             raise HTTPException(status_code=500, detail="Failed to delete feature")
 
         return {"success": True, "message": f"Feature {feature_id} deleted"}
+    except RuntimeError as e:
+        logger.error(f"Container command failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete feature: {e}")
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Failed to delete feature")
-        raise HTTPException(status_code=500, detail="Failed to delete feature")
 
 
 @router.patch("/{feature_id}/skip")
 async def skip_feature(project_name: str, feature_id: str):
     """
     Mark a feature as skipped by moving it to the end of the priority queue.
-
-    This doesn't delete the feature but gives it a very low priority
-    so it will be processed last.
+    Requires container to be running.
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -356,33 +252,16 @@ async def skip_feature(project_name: str, feature_id: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    # Use container client if running
-    if _is_container_running(project_name):
-        try:
-            container_client = ContainerBeadsClient(project_name)
-            result = await container_client.skip(feature_id)
-
-            if result is None:
-                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
-
-            if "error" in result:
-                raise HTTPException(status_code=400, detail=result["error"])
-
-            return {"success": True, "message": f"Feature {feature_id} moved to end of queue"}
-        except RuntimeError as e:
-            logger.error(f"Container command failed: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to skip feature: {e}")
-        except HTTPException:
-            raise
-
-    # Fallback to direct BeadsClient
-    client = _get_beads_client(project_dir)
-
-    if not client.is_initialized():
-        raise HTTPException(status_code=404, detail="No features found")
+    # Require container to be running for write operations
+    if not _is_container_running(project_name):
+        raise HTTPException(
+            status_code=503,
+            detail="Container not running. Start the agent to skip features."
+        )
 
     try:
-        result = client.skip(feature_id)
+        container_client = ContainerBeadsClient(project_name)
+        result = await container_client.skip(feature_id)
 
         if result is None:
             raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
@@ -391,17 +270,17 @@ async def skip_feature(project_name: str, feature_id: str):
             raise HTTPException(status_code=400, detail=result["error"])
 
         return {"success": True, "message": f"Feature {feature_id} moved to end of queue"}
+    except RuntimeError as e:
+        logger.error(f"Container command failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to skip feature: {e}")
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Failed to skip feature")
-        raise HTTPException(status_code=500, detail="Failed to skip feature")
 
 
 @router.patch("/{feature_id}", response_model=FeatureResponse)
 async def update_feature(project_name: str, feature_id: str, update: FeatureUpdate):
     """
-    Update a feature's fields.
+    Update a feature's fields. Requires container to be running.
 
     Only the provided fields will be updated; others remain unchanged.
     """
@@ -414,50 +293,23 @@ async def update_feature(project_name: str, feature_id: str, update: FeatureUpda
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    # Use container client if running
-    if _is_container_running(project_name):
-        try:
-            container_client = ContainerBeadsClient(project_name)
-
-            # Check if feature exists
-            feature = await container_client.get_feature(feature_id)
-            if not feature:
-                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
-
-            # Update the feature
-            updated = await container_client.update(
-                feature_id,
-                name=update.name,
-                description=update.description,
-                priority=update.priority,
-                category=update.category,
-                steps=update.steps,
-            )
-
-            if not updated:
-                raise HTTPException(status_code=500, detail="Failed to update feature")
-
-            return feature_to_response(updated)
-        except RuntimeError as e:
-            logger.error(f"Container command failed: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to update feature: {e}")
-        except HTTPException:
-            raise
-
-    # Fallback to direct BeadsClient
-    client = _get_beads_client(project_dir)
-
-    if not client.is_initialized():
-        raise HTTPException(status_code=404, detail="No features found")
+    # Require container to be running for write operations
+    if not _is_container_running(project_name):
+        raise HTTPException(
+            status_code=503,
+            detail="Container not running. Start the agent to update features."
+        )
 
     try:
+        container_client = ContainerBeadsClient(project_name)
+
         # Check if feature exists
-        feature = client.get_feature(feature_id)
+        feature = await container_client.get_feature(feature_id)
         if not feature:
             raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
         # Update the feature
-        updated = client.update(
+        updated = await container_client.update(
             feature_id,
             name=update.name,
             description=update.description,
@@ -470,17 +322,18 @@ async def update_feature(project_name: str, feature_id: str, update: FeatureUpda
             raise HTTPException(status_code=500, detail="Failed to update feature")
 
         return feature_to_response(updated)
+    except RuntimeError as e:
+        logger.error(f"Container command failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update feature: {e}")
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Failed to update feature")
-        raise HTTPException(status_code=500, detail="Failed to update feature")
 
 
 @router.patch("/{feature_id}/reopen")
 async def reopen_feature(project_name: str, feature_id: str):
     """
     Reopen a completed feature (move it back to pending).
+    Requires container to be running.
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -491,41 +344,18 @@ async def reopen_feature(project_name: str, feature_id: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    # Use container client if running
-    if _is_container_running(project_name):
-        try:
-            container_client = ContainerBeadsClient(project_name)
-
-            # Check if feature exists and is closed
-            feature = await container_client.get_feature(feature_id)
-            if not feature:
-                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
-
-            if not feature.get("passes"):
-                raise HTTPException(status_code=400, detail="Feature is not completed, cannot reopen")
-
-            # Reopen the feature
-            reopened = await container_client.reopen(feature_id)
-
-            if not reopened:
-                raise HTTPException(status_code=500, detail="Failed to reopen feature")
-
-            return {"success": True, "message": f"Feature {feature_id} reopened"}
-        except RuntimeError as e:
-            logger.error(f"Container command failed: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to reopen feature: {e}")
-        except HTTPException:
-            raise
-
-    # Fallback to direct BeadsClient
-    client = _get_beads_client(project_dir)
-
-    if not client.is_initialized():
-        raise HTTPException(status_code=404, detail="No features found")
+    # Require container to be running for write operations
+    if not _is_container_running(project_name):
+        raise HTTPException(
+            status_code=503,
+            detail="Container not running. Start the agent to reopen features."
+        )
 
     try:
+        container_client = ContainerBeadsClient(project_name)
+
         # Check if feature exists and is closed
-        feature = client.get_feature(feature_id)
+        feature = await container_client.get_feature(feature_id)
         if not feature:
             raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
@@ -533,14 +363,14 @@ async def reopen_feature(project_name: str, feature_id: str):
             raise HTTPException(status_code=400, detail="Feature is not completed, cannot reopen")
 
         # Reopen the feature
-        reopened = client.reopen(feature_id)
+        reopened = await container_client.reopen(feature_id)
 
         if not reopened:
             raise HTTPException(status_code=500, detail="Failed to reopen feature")
 
         return {"success": True, "message": f"Feature {feature_id} reopened"}
+    except RuntimeError as e:
+        logger.error(f"Container command failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reopen feature: {e}")
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("Failed to reopen feature")
-        raise HTTPException(status_code=500, detail="Failed to reopen feature")
