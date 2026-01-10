@@ -79,6 +79,11 @@ def get_coding_prompt_yolo(project_dir: Path | None = None) -> str:
     return load_prompt("coding_prompt_yolo", project_dir)
 
 
+def get_overseer_prompt(project_dir: Path | None = None) -> str:
+    """Load the overseer agent prompt (project-specific if available)."""
+    return load_prompt("overseer_prompt", project_dir)
+
+
 def get_app_spec(project_dir: Path) -> str:
     """
     Load the app spec from the project.
@@ -137,6 +142,7 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
         ("coding_prompt.template.md", "coding_prompt.md"),
         ("coding_prompt_yolo.template.md", "coding_prompt_yolo.md"),
         ("initializer_prompt.template.md", "initializer_prompt.md"),
+        ("overseer_prompt.template.md", "overseer_prompt.md"),
     ]
 
     copied_files = []

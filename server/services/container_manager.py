@@ -86,6 +86,8 @@ class ContainerManager:
         self._user_started: bool = False
         # Flag to prevent health monitor conflicts during restart
         self._restarting: bool = False
+        # Track if the last agent was overseer (for completion detection)
+        self._last_agent_was_overseer: bool = False
 
         # Callbacks for WebSocket notifications
         self._output_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
@@ -97,6 +99,10 @@ class ContainerManager:
 
     def _sync_status(self) -> None:
         """Sync status with actual Docker container state."""
+        # Preserve "completed" status - don't overwrite it
+        if self._status == "completed":
+            return
+
         try:
             result = subprocess.run(
                 ["docker", "inspect", "-f", "{{.State.Status}}", self.container_name],
@@ -473,6 +479,12 @@ class ContainerManager:
         - 1: Failure (all retries exhausted)
         - 130: User interrupt (Ctrl+C)
 
+        Agent flow:
+        - If open features exist → restart coding agent
+        - If no open features:
+          - If last agent was NOT overseer → restart with overseer
+          - If last agent WAS overseer → project is truly complete
+
         Args:
             exit_code: The exit code from the agent process
 
@@ -480,17 +492,27 @@ class ContainerManager:
             Tuple of (success, message)
         """
         if exit_code == 0:
-            # Success - check for more features
+            # Success - determine next action
             if self._user_started and self.has_open_features():
-                logger.info(f"Task complete in {self.container_name}, restarting for next feature...")
+                # Features remain - restart coding agent
+                logger.info(f"Features remain in {self.container_name}, restarting coding agent...")
                 await self._broadcast_output("[System] Session complete. Starting fresh context for next task...")
+                self._last_agent_was_overseer = False
                 return await self.restart_agent()
             elif self._user_started and not self.has_open_features():
-                logger.info(f"All features complete in {self.container_name}!")
-                await self._broadcast_output("[System] All features complete!")
-                await self.stop()
-                self.status = "completed"
-                return True, "All features complete"
+                # All features closed - check if overseer already verified
+                if self._last_agent_was_overseer:
+                    # Overseer found nothing - project is truly complete
+                    logger.info(f"Verification complete in {self.container_name}! All features verified.")
+                    await self._broadcast_output("[System] Verification complete! All features verified.")
+                    await self.stop()
+                    self.status = "completed"
+                    return True, "All features verified complete"
+                else:
+                    # Run overseer to verify implementations
+                    logger.info(f"All features closed in {self.container_name}, running overseer verification...")
+                    await self._broadcast_output("[System] All features complete. Running verification...")
+                    return await self.restart_with_overseer()
             return True, "Instruction completed"
 
         elif exit_code == 130:
@@ -518,6 +540,7 @@ class ContainerManager:
             if self._user_started and self.has_open_features():
                 await self._broadcast_output("[System] Auto-restarting after error...")
                 await asyncio.sleep(5)  # Brief delay before restart
+                self._last_agent_was_overseer = False
                 return await self.restart_agent()
             else:
                 return False, f"Agent failed: {error_info}"
@@ -579,6 +602,54 @@ class ContainerManager:
                 instruction = coding_prompt_path.read_text()
             except Exception as e:
                 return False, f"Failed to read coding prompt: {e}"
+
+            # Mark that we're running coding agent (not overseer)
+            self._last_agent_was_overseer = False
+
+            # Start container with instruction
+            return await self.start(instruction)
+        finally:
+            self._restarting = False
+
+    async def restart_with_overseer(self) -> tuple[bool, str]:
+        """
+        Restart the agent with the overseer prompt.
+
+        This is called when all features are closed to verify implementations.
+        The overseer checks for incomplete/placeholder code and creates/reopens issues.
+
+        Returns:
+            Tuple of (success, message)
+        """
+        logger.info(f"Starting overseer verification in container {self.container_name}")
+
+        self._restarting = True
+        try:
+            # Stop the container
+            await self.stop()
+
+            # Read the overseer prompt from the project
+            overseer_prompt_path = self.project_dir / "prompts" / "overseer_prompt.md"
+            if not overseer_prompt_path.exists():
+                # Fall back to template if project-specific doesn't exist
+                import sys
+                from pathlib import Path
+                root = Path(__file__).parent.parent.parent
+                if str(root) not in sys.path:
+                    sys.path.insert(0, str(root))
+                from prompts import get_overseer_prompt
+                try:
+                    instruction = get_overseer_prompt(self.project_dir)
+                except FileNotFoundError:
+                    return False, "No overseer_prompt.md found in project or templates"
+            else:
+                try:
+                    instruction = overseer_prompt_path.read_text()
+                except Exception as e:
+                    return False, f"Failed to read overseer prompt: {e}"
+
+            # Mark that we're running overseer
+            self._last_agent_was_overseer = True
 
             # Start container with instruction
             return await self.start(instruction)

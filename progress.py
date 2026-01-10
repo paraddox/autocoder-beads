@@ -56,6 +56,49 @@ def has_features(project_dir: Path, project_name: str | None = None) -> bool:
     return False
 
 
+def has_open_features(project_dir: Path, project_name: str | None = None) -> bool:
+    """
+    Check if the project has any open or in_progress features.
+
+    This is used to determine if the overseer agent should run.
+    Returns True if there are pending or in_progress features.
+    Returns False if all features are closed (overseer should run).
+
+    Args:
+        project_dir: Directory containing the project
+        project_name: Optional project name for cache lookup
+    """
+    # Try cache first if project_name provided (avoids permission issues)
+    if project_name:
+        try:
+            from server.services.feature_poller import get_cached_stats
+
+            stats = get_cached_stats(project_name)
+            open_count = stats.get("pending", 0) + stats.get("in_progress", 0)
+            return open_count > 0
+        except ImportError:
+            pass  # Server modules not available
+
+    # Fallback: Direct JSONL check
+    issues_file = project_dir / ".beads" / "issues.jsonl"
+    if issues_file.exists():
+        try:
+            with open(issues_file, 'r') as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            issue = json.loads(line)
+                            status = issue.get("status", "open")
+                            if status in ("open", "in_progress"):
+                                return True
+                        except json.JSONDecodeError:
+                            continue
+        except (PermissionError, OSError):
+            pass  # Can't read file
+
+    return False
+
+
 def count_passing_tests(project_dir: Path, project_name: str | None = None) -> tuple[int, int, int]:
     """
     Count passing, in_progress, and total tests.

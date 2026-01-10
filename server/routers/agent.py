@@ -25,8 +25,8 @@ if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
 from registry import get_project_path
-from progress import has_features
-from prompts import get_initializer_prompt, get_coding_prompt, get_coding_prompt_yolo
+from progress import has_features, has_open_features
+from prompts import get_initializer_prompt, get_coding_prompt, get_coding_prompt_yolo, get_overseer_prompt
 
 
 def _get_project_path(project_name: str) -> Path:
@@ -87,16 +87,20 @@ def _get_agent_prompt(project_dir: Path, project_name: str, yolo_mode: bool = Fa
     Determine the appropriate prompt based on project state.
 
     - If no features exist: use initializer prompt
-    - If features exist: use coding prompt (or yolo variant)
+    - If open features exist: use coding prompt (or yolo variant)
+    - If all features closed: use overseer prompt (verification)
     """
-    if has_features(project_dir, project_name):
-        # Features exist, continue coding
+    if not has_features(project_dir, project_name):
+        # No features yet - run initializer
+        return get_initializer_prompt(project_dir)
+    elif has_open_features(project_dir, project_name):
+        # Open features exist - run coding agent
         if yolo_mode:
             return get_coding_prompt_yolo(project_dir)
         return get_coding_prompt(project_dir)
     else:
-        # No features, initialize from spec
-        return get_initializer_prompt(project_dir)
+        # Features exist but all closed - run overseer for verification
+        return get_overseer_prompt(project_dir)
 
 
 @router.post("/start", response_model=AgentActionResponse)
@@ -134,8 +138,14 @@ async def start_agent(
         # Auto-determine based on project state
         try:
             instruction = _get_agent_prompt(project_dir, project_name, request.yolo_mode)
-            is_init = not has_features(project_dir, project_name)
-            print(f"[Agent] Auto-selected {'initializer' if is_init else 'coding'} prompt for {project_name}")
+            # Determine which prompt was selected for logging
+            if not has_features(project_dir, project_name):
+                prompt_type = "initializer"
+            elif has_open_features(project_dir, project_name):
+                prompt_type = "coding"
+            else:
+                prompt_type = "overseer"
+            print(f"[Agent] Auto-selected {prompt_type} prompt for {project_name}")
         except FileNotFoundError as e:
             raise HTTPException(
                 status_code=400,

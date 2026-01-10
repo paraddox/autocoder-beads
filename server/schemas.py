@@ -133,7 +133,7 @@ class AgentStartRequest(BaseModel):
 
 class AgentStatus(BaseModel):
     """Current agent/container status."""
-    status: Literal["not_created", "stopped", "running", "paused", "crashed"]
+    status: Literal["not_created", "stopped", "running", "paused", "crashed", "completed"]
     container_name: str | None = None
     started_at: datetime | None = None
     idle_seconds: int = 0
