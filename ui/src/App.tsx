@@ -318,7 +318,7 @@ function App() {
             <KanbanBoard
               features={features}
               onFeatureClick={setSelectedFeature}
-              agentRunning={wsState.agentStatus === 'running'}
+              agentRunning={agentStatusData?.agent_running ?? false}
               onEditFeature={handleEditFeature}
               onReopenFeature={handleReopenFeature}
             />
