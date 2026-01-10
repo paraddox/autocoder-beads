@@ -41,6 +41,7 @@ from .services.container_manager import (
     cleanup_idle_containers,
     start_agent_health_monitor,
 )
+from .services.feature_poller import start_feature_poller
 from .websocket import project_websocket
 
 # Idle container check interval (seconds)
@@ -75,6 +76,7 @@ async def lifespan(app: FastAPI):
     # Startup - start background monitors
     idle_monitor_task = asyncio.create_task(idle_container_monitor())
     health_monitor_task = asyncio.create_task(start_agent_health_monitor())
+    feature_poller_task = asyncio.create_task(start_feature_poller())
 
     yield
 
@@ -83,12 +85,17 @@ async def lifespan(app: FastAPI):
 
     idle_monitor_task.cancel()
     health_monitor_task.cancel()
+    feature_poller_task.cancel()
     try:
         await idle_monitor_task
     except asyncio.CancelledError:
         pass
     try:
         await health_monitor_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await feature_poller_task
     except asyncio.CancelledError:
         pass
 

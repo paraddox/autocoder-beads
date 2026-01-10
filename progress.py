@@ -43,16 +43,44 @@ def has_features(project_dir: Path) -> bool:
     return client.has_features()
 
 
-def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
+def count_passing_tests(project_dir: Path, project_name: str | None = None) -> tuple[int, int, int]:
     """
     Count passing, in_progress, and total tests.
 
+    Uses cached data when container is running to avoid permission issues.
+    Falls back to direct BeadsClient when container is stopped.
+
     Args:
         project_dir: Directory containing the project
+        project_name: Optional project name for cache lookup
 
     Returns:
         (passing_count, in_progress_count, total_count)
     """
+    # Try cache if project_name provided
+    if project_name:
+        try:
+            from server.services.container_manager import _managers, _managers_lock
+            from server.services.feature_poller import get_cached_stats
+
+            use_cache = False
+            with _managers_lock:
+                manager = _managers.get(project_name)
+                if manager and manager.status == "running":
+                    use_cache = True
+
+            if use_cache:
+                stats = get_cached_stats(project_name)
+                if stats.get("total", 0) > 0:
+                    return (
+                        stats.get("done", 0),
+                        stats.get("in_progress", 0),
+                        stats.get("total", 0),
+                    )
+        except ImportError:
+            pass  # Server modules not available
+
+    # Fallback to direct BeadsClient
     client = BeadsClient(project_dir)
     if not client.is_initialized():
         return 0, 0, 0

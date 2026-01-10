@@ -44,8 +44,10 @@ RUN pip install --no-cache-dir claude-code-sdk
 RUN curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash \
     && mv /root/.local/bin/bd /usr/local/bin/bd 2>/dev/null || true
 
-# Copy agent application
+# Copy agent application and container scripts
 COPY agent_app.py /app/agent_app.py
+COPY container_scripts/feature_status.py /app/feature_status.py
+COPY container_scripts/beads_commands.py /app/beads_commands.py
 
 # Configure git for beads operations (for root, during build)
 RUN git config --global user.email "docker@autocoder.local" \

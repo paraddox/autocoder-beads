@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Column, DateTime, String, create_engine
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -60,6 +60,45 @@ class Project(Base):
     name = Column(String(50), primary_key=True, index=True)
     path = Column(String, nullable=False)  # POSIX format for cross-platform
     created_at = Column(DateTime, nullable=False)
+
+
+class FeatureCache(Base):
+    """Cached feature data from container polling."""
+    __tablename__ = "feature_cache"
+
+    project_name = Column(
+        String(50),
+        ForeignKey("projects.name", ondelete="CASCADE"),
+        primary_key=True,
+        index=True
+    )
+    feature_id = Column(String(50), primary_key=True)
+    priority = Column(Integer, default=999)
+    category = Column(String(100), default="")
+    name = Column(String(255), nullable=False)
+    description = Column(Text, default="")
+    steps_json = Column(Text, default="[]")  # JSON array of steps
+    status = Column(String(20), nullable=False)  # open, in_progress, closed
+    updated_at = Column(DateTime, nullable=False)
+
+
+class FeatureStatsCache(Base):
+    """Cached aggregate feature stats for quick access."""
+    __tablename__ = "feature_stats_cache"
+
+    project_name = Column(
+        String(50),
+        ForeignKey("projects.name", ondelete="CASCADE"),
+        primary_key=True,
+        index=True
+    )
+    pending_count = Column(Integer, default=0)
+    in_progress_count = Column(Integer, default=0)
+    done_count = Column(Integer, default=0)
+    total_count = Column(Integer, default=0)
+    percentage = Column(Float, default=0.0)
+    last_polled_at = Column(DateTime, nullable=False)
+    poll_error = Column(String(500), nullable=True)
 
 
 # =============================================================================
