@@ -126,9 +126,6 @@ Features are tracked using **beads** (git-backed issue tracking). Each project h
 - Background poller updates cache every 30 seconds when container running
 - Write operations (create, update, delete, reopen) require container to be running
 
-**Legacy client (deprecated):**
-- `api/beads_client.py` - Python wrapper for the `bd` CLI (no longer used by server)
-
 **Feature data model (beads issues):**
 - `id` - String ID (e.g., "beads-1", "beads-2")
 - `priority` - P0-P4 (0=critical, 4=backlog)

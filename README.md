@@ -173,8 +173,6 @@ autonomous-coding/
 ├── progress.py               # Progress tracking utilities
 ├── prompts.py                # Prompt loading utilities
 ├── registry.py               # Project registry (SQLite-based)
-├── api/
-│   └── beads_client.py       # Python wrapper for beads CLI
 ├── server/
 │   ├── main.py               # FastAPI REST API server
 │   ├── websocket.py          # WebSocket handler for real-time updates

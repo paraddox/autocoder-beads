@@ -3,7 +3,7 @@ Container Beads Client
 ======================
 
 Sends beads commands to containers via docker exec.
-Replaces host-side BeadsClient for all beads operations when container is running.
+All beads operations are routed through this client to avoid permission issues.
 """
 
 import asyncio
@@ -113,7 +113,7 @@ def send_beads_command_sync(project_name: str, command: dict, timeout: int = 30)
 class ContainerBeadsClient:
     """
     Client for beads operations via container.
-    Provides same interface as BeadsClient but routes through docker exec.
+    Routes all beads commands through docker exec to avoid permission issues.
     """
 
     def __init__(self, project_name: str):
