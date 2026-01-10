@@ -275,6 +275,7 @@ class ContainerManager:
         if self._status == "running":
             # Container already running, just send instruction if provided
             if instruction:
+                self._user_started = True  # Mark as user-started for auto-restart
                 return await self.send_instruction(instruction)
             return True, "Container already running"
 
