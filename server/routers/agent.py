@@ -82,14 +82,14 @@ async def get_agent_status(project_name: str):
     )
 
 
-def _get_agent_prompt(project_dir: Path, yolo_mode: bool = False) -> str:
+def _get_agent_prompt(project_dir: Path, project_name: str, yolo_mode: bool = False) -> str:
     """
     Determine the appropriate prompt based on project state.
 
     - If no features exist: use initializer prompt
     - If features exist: use coding prompt (or yolo variant)
     """
-    if has_features(project_dir):
+    if has_features(project_dir, project_name):
         # Features exist, continue coding
         if yolo_mode:
             return get_coding_prompt_yolo(project_dir)
@@ -133,8 +133,8 @@ async def start_agent(
     if not instruction:
         # Auto-determine based on project state
         try:
-            instruction = _get_agent_prompt(project_dir, request.yolo_mode)
-            is_init = not has_features(project_dir)
+            instruction = _get_agent_prompt(project_dir, project_name, request.yolo_mode)
+            is_init = not has_features(project_dir, project_name)
             print(f"[Agent] Auto-selected {'initializer' if is_init else 'coding'} prompt for {project_name}")
         except FileNotFoundError as e:
             raise HTTPException(

@@ -16,7 +16,7 @@ WEBHOOK_URL = os.environ.get("PROGRESS_N8N_WEBHOOK_URL")
 PROGRESS_CACHE_FILE = ".progress_cache"
 
 
-def has_features(project_dir: Path) -> bool:
+def has_features(project_dir: Path, project_name: str | None = None) -> bool:
     """
     Check if the project has features in beads.
 
@@ -25,7 +25,18 @@ def has_features(project_dir: Path) -> bool:
     Returns True if .beads/ exists with issues.
     Returns False if no features exist (initializer needs to run).
     """
-    # Direct JSONL check - most reliable, avoids permission issues
+    # Try cache first if project_name provided (avoids permission issues)
+    if project_name:
+        try:
+            from server.services.feature_poller import get_cached_stats
+
+            stats = get_cached_stats(project_name)
+            if stats.get("total", 0) > 0:
+                return True
+        except ImportError:
+            pass  # Server modules not available
+
+    # Direct JSONL check
     issues_file = project_dir / ".beads" / "issues.jsonl"
     if issues_file.exists():
         try:
@@ -34,7 +45,7 @@ def has_features(project_dir: Path) -> bool:
                     if line.strip():
                         return True  # At least one issue exists
         except (PermissionError, OSError):
-            pass
+            pass  # Can't read - try config fallback
 
     # Check if .beads directory exists with config (beads initialized)
     config_file = project_dir / ".beads" / "config.yaml"
